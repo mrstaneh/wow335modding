@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Mod diffs are applied to LF-normalized originals; bash scripts break with CRLF
+*.patch text eol=lf
+*.sh text eol=lf
