@@ -1,0 +1,4 @@
+## Interface: 30300
+## Title: Custom Skills
+## Notes: The Skills panel. Toggle with /skills or the key binding under "Custom Skills".
+CustomSkills.lua

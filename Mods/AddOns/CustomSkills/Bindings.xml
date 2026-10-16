@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="CUSTOMSKILLS_TOGGLE" header="CUSTOMSKILLS">
+        CustomSkills_Toggle()
+    </Binding>
+</Bindings>
