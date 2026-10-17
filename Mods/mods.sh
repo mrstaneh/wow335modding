@@ -73,15 +73,19 @@ server)
     [ -f "$WORK/pack/DBFilesClient/Map.dbc" ] || { echo "run '$0 build' first"; exit 1; }
     [ -e "$AC/data/dbc/Map.dbc.orig" ] || cp "$AC/data/dbc/Map.dbc" "$AC/data/dbc/Map.dbc.orig"
     cp "$WORK/pack/DBFilesClient/Map.dbc" "$AC/data/dbc/Map.dbc"
-    # ponytail: the extractor has no map filter, so it converts every map (a few minutes) and we keep ours
-    rm -rf "$WORK/extract"
-    mkdir -p "$WORK/extract"
-    "$AC/map_extractor.exe" -i "$(dirname "$DATA")" -o "$WORK/extract" -e 1 > "$WORK/extract.log"
+    # Terrain (maps) and collision of buildings and doodads (vmaps), only for our maps (-m is our extractor patch)
     for id in $MAP_IDS; do
+        rm -rf "$WORK/extract"
+        mkdir -p "$WORK/extract/vmaps"
+        "$AC/map_extractor.exe" -i "$(dirname "$DATA")" -o "$WORK/extract" -e 1 -m "$id" > "$WORK/extract.log"
         cp "$WORK/extract/maps/$id"*.map "$AC/data/maps/"
+        # the vmap tools write into the current directory, so they get absolute paths
+        ac=$(realpath "$AC") data=$(realpath "$DATA")
+        (cd "$WORK/extract" && "$ac/vmap4_extractor.exe" -d "$data" -m "$id" > vmap.log && "$ac/vmap4_assembler.exe" Buildings vmaps > assemble.log)
+        cp "$WORK/extract/vmaps/"* "$AC/data/vmaps/"
     done
     for sql in Mods/sql/*.sql; do
-        docker exec -i ac-mysql mysql -uacore -pacore acore_world < "$sql" 2> /dev/null
+        docker exec -i -e MYSQL_PWD=acore ac-mysql mysql -uacore acore_world < "$sql"
     done
     echo "installed maps $MAP_IDS and Mods/sql on the server; restart worldserver to load them"
     ;;
