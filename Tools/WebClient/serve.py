@@ -2,10 +2,13 @@
 
 - / and the build output (WowWeb.js, WowWeb.wasm) with the cross-origin isolation headers threads need.
 - /data/... from your own game Data folder, with Range requests (System/File/Web/WebFile.cpp reads MPQs in chunks).
-  Directories answer with an X-Wow-Directory header. The data is only served to this machine (127.0.0.1).
-- /ws/<host>/<port>: a WebSocket bridged to a TCP port on this machine (authserver 3724, worldserver 8085).
+  Directories answer with an X-Wow-Directory header.
+- /ws/<host>/<port>: a WebSocket bridged to a TCP port on this machine (authserver 3724, worldserver 8085), so other
+  machines' clients reach the servers here even though the realmlist says 127.0.0.1.
 
 Usage: python serve.py [--port 8000] [--build ../../bin/Win] [--data ../../bin/Win/Data]
+On your local network (HTTPS required there): python serve.py --host 0.0.0.0 --cert certs/wow.pem --key certs/wow.key
+Only do that on a network you trust: it serves your game data to every machine that can reach it.
 """
 import argparse
 import base64
@@ -13,6 +16,7 @@ import hashlib
 import os
 import re
 import socket
+import ssl
 import struct
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -171,11 +175,26 @@ def main():
     parser.add_argument('--port', type=int, default=8000)
     parser.add_argument('--build', default=os.path.join(HERE, '..', '..', 'bin', 'Win'))
     parser.add_argument('--data', default=os.path.join(HERE, '..', '..', 'bin', 'Win', 'Data'))
+    parser.add_argument('--host', default='127.0.0.1', help='0.0.0.0 to serve your local network (needs --cert)')
+    parser.add_argument('--cert', help='HTTPS certificate (PEM); see make-cert.ps1')
+    parser.add_argument('--key', help='HTTPS private key (PEM)')
     args = parser.parse_args()
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
+
+    # Threads need a cross-origin isolated page, which browsers only allow on https or on localhost.
+    if args.host not in ('127.0.0.1', 'localhost') and not args.cert:
+        parser.error('other machines can only run the client over HTTPS: pass --cert and --key (see make-cert.ps1)')
+
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.daemon_threads = True
     server.build, server.data = os.path.abspath(args.build), os.path.abspath(args.data)
-    print(f'http://localhost:{args.port}/  (data: {server.data})')
+    scheme = 'http'
+    if args.cert:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(args.cert, args.key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        scheme = 'https'
+    where = 'localhost' if args.host in ('127.0.0.1', 'localhost') else ('this machine\'s address' if args.host == '0.0.0.0' else args.host)
+    print(f'{scheme}://{where}:{args.port}/  (data: {server.data})')
     server.serve_forever()
 
 
