@@ -21,7 +21,8 @@ if (EMSCRIPTEN)
     # MSVC dialect (__int64, template parameter shadowing, late template parsing, ...) as of VS2022 without defining
     # _MSC_VER or _WIN32; SSE intrinsics map to WebAssembly SIMD.
     # Engine/Source/Os/Web/Compat holds a minimal windows.h and a forced compat header.
-    add_compile_options(-fms-extensions -fms-compatibility -fms-compatibility-version=19.33 -fdelayed-template-parsing
+    # -pthread: the client's threads become Web Workers (needs a cross-origin isolated page).
+    add_compile_options(-pthread -fms-extensions -fms-compatibility -fms-compatibility-version=19.33 -fdelayed-template-parsing
         -Wno-c++11-narrowing -Wno-register -msimd128 -msse2
         "SHELL:-include ${CMAKE_SOURCE_DIR}/Engine/Source/Os/Web/Compat/WebCompat.h")
     include_directories(BEFORE SYSTEM ${CMAKE_SOURCE_DIR}/Engine/Source/Os/Web/Compat)
