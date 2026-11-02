@@ -36,7 +36,7 @@
     /*#define PLATFORM_WINDOWS_PS3MODE*/      /* Emulation of PS3 (uses alternate mixer) */
     /*#define FMOD_SUPPORT_HARDWAREXM*/       /* Emulation of PS2/PSP hardware xm support (uses dsound buffers) */
 
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__EMSCRIPTEN__) /* wow335modding: the browser build is Linux-like */
 
     #define PLATFORM_LINUX
     #define PLATFORM_ENDIAN_LITTLE

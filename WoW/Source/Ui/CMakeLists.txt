@@ -3,6 +3,10 @@ file(GLOB_RECURSE PRIVATE_SOURCES CONFIGURE_DEPENDS "*.cpp")
 if (NOT WIN32)
     list(FILTER PRIVATE_SOURCES EXCLUDE REGEX "/UILCD/Windows/")
 endif ()
+if (WOWDECOMP_PLATFORM_WEB)
+    # wow335modding: no keyboard LCD in a browser; UILCD/LCDWeb.cpp stands in for LCD.cpp
+    list(FILTER PRIVATE_SOURCES EXCLUDE REGEX "/UILCD/LCD\\.cpp$")
+endif ()
 
 add_library(Ui STATIC
     ${PRIVATE_SOURCES}

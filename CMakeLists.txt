@@ -13,13 +13,26 @@ project(wowdecomp CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
-    message(FATAL_ERROR "wowdecomp targets Windows only.")
+if (EMSCRIPTEN)
+    # wow335modding: the browser build (WebAssembly, 32-bit pointers). It defines no WOWDECOMP_ARCH_* macro, so the
+    # Win32/Win64 platform files drop out and the Web ones (WOWDECOMP_PLATFORM_WEB) take their place.
+    set(WOWDECOMP_PLATFORM_WEB 1)
+    add_compile_definitions(WOWDECOMP_PLATFORM_WEB=1)
+    # MSVC dialect (__int64, template parameter shadowing, late template parsing, ...) as of VS2022 without defining
+    # _MSC_VER or _WIN32; SSE intrinsics map to WebAssembly SIMD.
+    # Engine/Source/Os/Web/Compat holds a minimal windows.h and a forced compat header.
+    add_compile_options(-fms-extensions -fms-compatibility -fms-compatibility-version=19.33 -fdelayed-template-parsing
+        -Wno-c++11-narrowing -Wno-register -msimd128 -msse2
+        "SHELL:-include ${CMAKE_SOURCE_DIR}/Engine/Source/Os/Web/Compat/WebCompat.h")
+    include_directories(BEFORE SYSTEM ${CMAKE_SOURCE_DIR}/Engine/Source/Os/Web/Compat)
+elseif (NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
+    message(FATAL_ERROR "wowdecomp targets Windows, and the browser through Emscripten.")
 endif ()
 
 # x64 is the target. Win32 stays buildable: it is the configuration whose struct layouts can be
 # checked against Wow.exe 3.3.5a (12340).
-if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+if (WOWDECOMP_PLATFORM_WEB)
+elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(WOWDECOMP_ARCH_64 1)
     add_compile_definitions(WOWDECOMP_ARCH_64=1)
 elseif (CMAKE_SIZEOF_VOID_P EQUAL 4)
@@ -39,13 +52,15 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_compile_definitions(
-    WIN32
-    _WINDOWS
-    NOMINMAX
-    WIN32_LEAN_AND_MEAN
-    _CRT_SECURE_NO_WARNINGS
-)
+if (NOT WOWDECOMP_PLATFORM_WEB)
+    add_compile_definitions(
+        WIN32
+        _WINDOWS
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+    )
+endif ()
 
 # Off by default: the client checks MPQ file MD5s (signaturefile) and GlueXML/FrameXML/AddOn .toc.sig files like the
 # original. ON accepts unsigned or modified game data and interface files.

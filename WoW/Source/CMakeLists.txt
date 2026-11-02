@@ -1,6 +1,8 @@
 file(GLOB PRIVATE_SOURCES CONFIGURE_DEPENDS "*.cpp")
 
-if (WOWDECOMP_ARCH_64)
+if (WOWDECOMP_PLATFORM_WEB)
+    file(GLOB PLATFORM_SOURCES CONFIGURE_DEPENDS "Web/*.cpp")
+elseif (WOWDECOMP_ARCH_64)
     file(GLOB PLATFORM_SOURCES CONFIGURE_DEPENDS "Win64/*.cpp")
 else ()
     file(GLOB PLATFORM_SOURCES CONFIGURE_DEPENDS "Win32/*.cpp")
@@ -8,7 +10,9 @@ endif ()
 
 add_executable(Wow WIN32 ${PRIVATE_SOURCES} ${PLATFORM_SOURCES})
 
-if (WOWDECOMP_ARCH_64)
+if (WOWDECOMP_PLATFORM_WEB)
+    set(WOW_OUTPUT_NAME WowWeb)
+elseif (WOWDECOMP_ARCH_64)
     set(WOW_OUTPUT_NAME Wow64)
 else ()
     set(WOW_OUTPUT_NAME Wow32)
@@ -29,7 +33,11 @@ target_include_directories(Wow
         ${CMAKE_SOURCE_DIR}
 )
 
-target_link_options(Wow PRIVATE "/INCREMENTAL:NO" "/ENTRY:start")
+if (WOWDECOMP_PLATFORM_WEB)
+    target_link_options(Wow PRIVATE "-sALLOW_MEMORY_GROWTH=1" "-sMAXIMUM_MEMORY=4GB" "-Wl,--error-limit=0")
+else ()
+    target_link_options(Wow PRIVATE "/INCREMENTAL:NO" "/ENTRY:start")
+endif ()
 
 target_link_libraries(Wow
     PRIVATE

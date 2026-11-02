@@ -5,6 +5,18 @@ set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "${SOUNDENGINE_DEFINITIO
 set(FMODEX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fmodex)
 set(FMODEX_FLAC_DIR ${FMODEX_DIR}/lib/flac-1.1.4)
 
+# wow335modding: the browser build has no FMOD Ex yet (its platform layer is Windows audio and x86 assembly);
+# only its headers, so SoundEngine compiles. ponytail: silent for now, a Web Audio output comes later.
+if (WOWDECOMP_PLATFORM_WEB)
+    add_library(fmodex INTERFACE)
+    target_include_directories(fmodex INTERFACE ${FMODEX_DIR}/src)
+    file(GLOB SOUNDENGINE_SOURCES CONFIGURE_DEPENDS "*.cpp")
+    add_library(SoundEngine STATIC ${SOUNDENGINE_SOURCES})
+    target_include_directories(SoundEngine PUBLIC ${CMAKE_SOURCE_DIR})
+    target_link_libraries(SoundEngine PUBLIC fmodex)
+    return()
+endif ()
+
 file(GLOB FMODEX_SOURCES CONFIGURE_DEPENDS
     "${FMODEX_DIR}/src/*.cpp"
     "${FMODEX_DIR}/win32/src/*.cpp"

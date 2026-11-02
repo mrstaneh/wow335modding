@@ -180,7 +180,7 @@
   typedef unsigned int ogg_uint32_t;
   typedef long long ogg_int64_t;
 
-#elif defined (__sun) || defined (__linux__)
+#elif defined (__sun) || defined (__linux__) || defined (__EMSCRIPTEN__) /* wow335modding */
 
   typedef short ogg_int16_t;
   typedef int ogg_int32_t;
