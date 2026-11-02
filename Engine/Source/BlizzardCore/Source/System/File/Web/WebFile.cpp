@@ -1,10 +1,13 @@
 // wow335modding: see WebFile.h. HTTP files get descriptors from HTTP_FD_BASE up; reads go through a cache of
 // CHUNK_SIZE-aligned chunks fetched with synchronous XHR, which a worker thread (every caller here) may use.
-// ponytail: one lock around the whole cache serializes concurrent reads; per-file locks if loading threads stall.
+// s_lock guards only the bookkeeping: it is released while a request runs, so threads reading cached data never wait on
+// another thread's download, and two threads after the same chunk share one fetch (s_fetching).
 #if defined(WOWDECOMP_PLATFORM_WEB)
 
 #include "Engine/Source/BlizzardCore/Source/System/File/Web/WebFile.h"
+#include <atomic>
 #include <cerrno>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -12,6 +15,7 @@
 #include <list>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <strings.h>
 #include <unistd.h>
@@ -89,6 +93,8 @@ std::map<int, HttpFile> s_files;
 int s_nextFd = HTTP_FD_BASE;
 std::map<std::pair<int, int64_t>, Chunk> s_chunks;
 std::list<std::pair<int, int64_t>> s_lru;
+std::set<std::pair<int, int64_t>> s_fetching; // chunks some thread is fetching right now
+std::condition_variable s_fetched;
 
 // path made absolute (against the working directory) with "." and ".." resolved.
 std::string Absolute(const char* path) {
@@ -144,34 +150,74 @@ bool DataUrl(const char* path, std::string& url) {
     return true;
 }
 
+// Counters for WebFile::TakeStats.
+std::atomic<int32_t> s_statRequests;
+std::atomic<int64_t> s_statBytes;
+std::atomic<int64_t> s_statWaitUs;
+
+// Runs a request with s_lock released, so other threads keep reading cached data meanwhile.
+template <typename Request>
+auto Unlocked(std::unique_lock<std::mutex>& lock, Request request) {
+    lock.unlock();
+    double start = emscripten_get_now();
+    auto result = request();
+    s_statRequests++;
+    s_statWaitUs += static_cast<int64_t>((emscripten_get_now() - start) * 1000.0);
+    lock.lock();
+    return result;
+}
+
 double Size(const std::string& url) {
+    std::unique_lock<std::mutex> lock(s_lock);
     auto found = s_sizes.find(url);
 
     if (found != s_sizes.end()) {
         return found->second;
     }
 
-    double size = url == DATA_URL || url == std::string(DATA_URL) + "/" ? -2 : wowHttpSize(url.c_str());
+    double size = url == DATA_URL || url == std::string(DATA_URL) + "/" ? -2 : Unlocked(lock, [&] { return wowHttpSize(url.c_str()); });
     s_sizes[url] = size;
     return size;
 }
 
-const Chunk* GetChunk(int id, int64_t index, int64_t fileSize) {
-    std::pair<int, int64_t> key(id, index);
-    auto found = s_chunks.find(key);
+// Copies part of one chunk into out; the chunk is fetched first if no thread has it yet. Returns the bytes copied, 0
+// on a failed fetch. Called with s_lock held.
+size_t CopyFromChunk(std::unique_lock<std::mutex>& lock, int id, int64_t fileSize, int64_t position, uint8_t* out, size_t count) {
+    std::pair<int, int64_t> key(id, position / CHUNK_SIZE);
 
-    if (found != s_chunks.end()) {
-        s_lru.splice(s_lru.begin(), s_lru, found->second.m_lru);
-        return &found->second;
+    while (true) {
+        auto found = s_chunks.find(key);
+
+        if (found != s_chunks.end()) {
+            s_lru.splice(s_lru.begin(), s_lru, found->second.m_lru);
+            const std::vector<uint8_t>& data = found->second.m_data;
+            size_t within = static_cast<size_t>(position % CHUNK_SIZE);
+            size_t take = data.size() - within < count ? data.size() - within : count;
+            memcpy(out, data.data() + within, take);
+            return take;
+        }
+
+        if (!s_fetching.count(key)) {
+            break;
+        }
+
+        s_fetched.wait(lock); // another thread is fetching this chunk
     }
 
-    int64_t offset = index * CHUNK_SIZE;
+    s_fetching.insert(key);
+    int64_t offset = key.second * CHUNK_SIZE;
     int64_t size = fileSize - offset < CHUNK_SIZE ? fileSize - offset : CHUNK_SIZE;
     std::vector<uint8_t> data(size);
+    std::string url = s_urls[id]; // a copy: s_urls may grow (and move) while the lock is released
+    bool ok = Unlocked(lock, [&] { return wowHttpRead(url.c_str(),static_cast<double>(offset), static_cast<int>(size), data.data()) == size; });
+    s_fetching.erase(key);
+    s_fetched.notify_all();
 
-    if (wowHttpRead(s_urls[id].c_str(), static_cast<double>(offset), static_cast<int>(size), data.data()) != size) {
-        return nullptr;
+    if (!ok) {
+        return 0;
     }
+
+    s_statBytes += size;
 
     if (s_chunks.size() >= MAX_CHUNKS) {
         s_chunks.erase(s_lru.back());
@@ -182,10 +228,11 @@ const Chunk* GetChunk(int id, int64_t index, int64_t fileSize) {
     Chunk& chunk = s_chunks[key];
     chunk.m_data.swap(data);
     chunk.m_lru = s_lru.begin();
-    return &chunk;
+    return CopyFromChunk(lock, id, fileSize, position, out, count);
 }
 
-ssize_t ReadAt(HttpFile& file, void* buffer, size_t count, int64_t offset) {
+// Called with s_lock held; file is a copy, since s_lock is released while chunks are fetched.
+ssize_t ReadAt(std::unique_lock<std::mutex>& lock, HttpFile file, void* buffer, size_t count, int64_t offset) {
     if (offset >= file.m_size) {
         return 0;
     }
@@ -198,18 +245,14 @@ ssize_t ReadAt(HttpFile& file, void* buffer, size_t count, int64_t offset) {
     size_t done = 0;
 
     while (done < count) {
-        int64_t position = offset + done;
-        const Chunk* chunk = GetChunk(file.m_id, position / CHUNK_SIZE, file.m_size);
+        size_t copied = CopyFromChunk(lock, file.m_id, file.m_size, offset + done, out + done, count - done);
 
-        if (!chunk) {
+        if (!copied) {
             errno = EIO;
             return done ? static_cast<ssize_t>(done) : -1;
         }
 
-        size_t within = static_cast<size_t>(position % CHUNK_SIZE);
-        size_t take = chunk->m_data.size() - within < count - done ? chunk->m_data.size() - within : count - done;
-        memcpy(out + done, chunk->m_data.data() + within, take);
-        done += take;
+        done += copied;
     }
 
     return static_cast<ssize_t>(done);
@@ -231,13 +274,14 @@ int WebFile::Open(const char* path, int flags, mode_t mode) {
         return open(path, flags, mode);
     }
 
-    std::lock_guard<std::mutex> lock(s_lock);
     double size = Size(url);
 
     if (size == -1) {
         errno = ENOENT;
         return -1;
     }
+
+    std::lock_guard<std::mutex> lock(s_lock);
 
     if ((flags & O_ACCMODE) != O_RDONLY || size == -2) {
         errno = size == -2 ? EISDIR : EROFS;
@@ -261,7 +305,7 @@ ssize_t WebFile::Read(int fd, void* buffer, size_t count) {
         return read(fd, buffer, count);
     }
 
-    std::lock_guard<std::mutex> lock(s_lock);
+    std::unique_lock<std::mutex> lock(s_lock);
     auto file = s_files.find(fd);
 
     if (file == s_files.end()) {
@@ -269,9 +313,10 @@ ssize_t WebFile::Read(int fd, void* buffer, size_t count) {
         return -1;
     }
 
-    ssize_t result = ReadAt(file->second, buffer, count, file->second.m_pos);
+    ssize_t result = ReadAt(lock, file->second, buffer, count, file->second.m_pos);
+    file = s_files.find(fd); // the lock was released during fetches
 
-    if (result > 0) {
+    if (result > 0 && file != s_files.end()) {
         file->second.m_pos += result;
     }
 
@@ -283,7 +328,7 @@ ssize_t WebFile::Pread(int fd, void* buffer, size_t count, off_t offset) {
         return pread(fd, buffer, count, offset);
     }
 
-    std::lock_guard<std::mutex> lock(s_lock);
+    std::unique_lock<std::mutex> lock(s_lock);
     auto file = s_files.find(fd);
 
     if (file == s_files.end()) {
@@ -291,7 +336,7 @@ ssize_t WebFile::Pread(int fd, void* buffer, size_t count, off_t offset) {
         return -1;
     }
 
-    return ReadAt(file->second, buffer, count, offset);
+    return ReadAt(lock, file->second, buffer, count, offset);
 }
 
 off_t WebFile::Lseek(int fd, off_t offset, int whence) {
@@ -342,7 +387,6 @@ int WebFile::Stat(const char* path, struct stat* st) {
         return stat(path, st);
     }
 
-    std::lock_guard<std::mutex> lock(s_lock);
     double size = Size(url);
 
     if (size == -1) {
@@ -382,6 +426,12 @@ bool WebFile::ListDirectory(const char* path, std::vector<std::pair<std::string,
 
     free(listing);
     return true;
+}
+
+void WebFile::TakeStats(int32_t& requests, int64_t& bytes, double& waitMs) {
+    requests = s_statRequests.exchange(0);
+    bytes = s_statBytes.exchange(0);
+    waitMs = s_statWaitUs.exchange(0) / 1000.0;
 }
 
 int WebFile::Close(int fd) {

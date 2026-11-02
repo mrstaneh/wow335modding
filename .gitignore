@@ -413,3 +413,6 @@ CMakeSettings.json
 
 # Local build directories
 /build/
+
+# local test login for the web client (Tools/WebClient)
+Tools/WebClient/test-account.txt

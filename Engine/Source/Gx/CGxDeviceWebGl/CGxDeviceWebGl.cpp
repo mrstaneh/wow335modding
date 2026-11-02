@@ -8,10 +8,12 @@
 #include <cstring>
 #include <new>
 #include <string>
+#include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
 #include <emscripten/html5_webgl.h>
 #include <GLES3/gl3.h>
 #include "Engine/Source/Gx/CGxDeviceWebGl/CGxDeviceWebGl.h"
+#include "Engine/Source/BlizzardCore/Source/System/File/Web/WebFile.h"
 #include "Engine/Source/Gx/CGxBuf.h"
 #include "Engine/Source/Gx/CGxPool.h"
 #include "Engine/Source/Gx/CGxTex.h"
@@ -714,6 +716,19 @@ void CGxDeviceWebGl::DeviceSetRenderTarget(EGxBuffer buffer, CGxTex* texture, ui
 }
 
 void CGxDeviceWebGl::ScenePresent() {
+    // Hitches: one console line per frame over 250 ms, with the game data downloaded meanwhile (all threads).
+    static double s_lastFrame;
+    double now = emscripten_get_now();
+    int32_t requests;
+    int64_t bytes;
+    double waitMs;
+    WebFile::TakeStats(requests, bytes, waitMs);
+
+    if (s_lastFrame && now - s_lastFrame > 250.0) {
+        fprintf(stderr, "CGxDeviceWebGl: frame %d took %.0f ms; game data: %d requests, %.1f MB, %.0f ms waited\n", this->m_frameCount, now - s_lastFrame, requests, bytes / 1048576.0, waitMs);
+    }
+
+    s_lastFrame = now;
     int32_t screenShot = this->m_scrShotClick;
     CGxDevice::ScenePresent();
 
@@ -723,23 +738,22 @@ void CGxDeviceWebGl::ScenePresent() {
 
     this->ICursorDraw();
 
-    // ponytail: errors only reach the console, a few per session; enough to spot a broken upload or state.
-    static int32_t s_errorReports;
-
-    for (GLenum error = glGetError(); error != GL_NO_ERROR && s_errorReports < 20; error = glGetError()) {
-        fprintf(stderr, "CGxDeviceWebGl: GL error 0x%04X in frame %d\n", error, this->m_frameCount);
-        s_errorReports++;
-    }
+    // No glGetError here: in a browser it waits for the GPU process to finish all queued work, which stalled frames
+    // for up to seconds whenever the GPU was busy. The browser console reports WebGL errors on its own.
 
     wowGlPresent();
 
-    // The page sizes #canvas to its layout box; follow it.
-    int32_t width;
-    int32_t height;
-    CanvasSize(width, height);
+    // The page sizes #canvas to its layout box; follow it. Asking is a blocking call to the page's thread, so only
+    // every 30 frames (half a second).
+    int32_t width = 0;
+    int32_t height = 0;
     const CRect& window = this->DeviceDefWindow();
 
-    if (width != static_cast<int32_t>(window.maxX) || height != static_cast<int32_t>(window.maxY)) {
+    if (this->m_frameCount % 30 == 0) {
+        CanvasSize(width, height);
+    }
+
+    if (width && (width != static_cast<int32_t>(window.maxX) || height != static_cast<int32_t>(window.maxY))) {
         wowGlResize(width, height);
 
         CRect rect;

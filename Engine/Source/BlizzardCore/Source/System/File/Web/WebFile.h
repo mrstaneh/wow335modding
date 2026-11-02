@@ -4,6 +4,7 @@
 #ifndef ENGINE_SOURCE_BLIZZARDCORE_SOURCE_SYSTEM_FILE_WEB_WEBFILE_H
 #define ENGINE_SOURCE_BLIZZARDCORE_SOURCE_SYSTEM_FILE_WEB_WEBFILE_H
 
+#include <cstdint>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <string>
@@ -22,6 +23,9 @@ int Close(int fd);
 
 // Lists a directory of the game data into (name, is directory) pairs; ok says whether it exists.
 // Returns false for paths that are not game data.
+// Since the last call: HTTP requests made, bytes downloaded, and the time threads spent waiting on them.
+void TakeStats(int32_t& requests, int64_t& bytes, double& waitMs);
+
 bool ListDirectory(const char* path, std::vector<std::pair<std::string, bool>>& entries, bool& ok);
 
 }
