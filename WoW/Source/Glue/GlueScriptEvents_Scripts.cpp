@@ -1597,6 +1597,14 @@ static int32_t Script_IsStreamingMode(lua_State* L) {
 }
 
 // STATIC: 0x00AC3E00
+#if defined(WOWDECOMP_PLATFORM_WEB)
+// wow335modding: lets GlueXML tell the browser build apart (Mods: a still login background instead of the 3D scene).
+static int32_t Script_IsWebClient(lua_State* L) {
+    lua_pushboolean(L, 1);
+    return 1;
+}
+#endif
+
 static FrameScript_Method s_scriptFunctions[] = {
     { "IsShiftKeyDown", &Script_IsShiftKeyDown },
     { "GetBuildInfo", &Script_GetBuildInfo },
@@ -1711,6 +1719,9 @@ static FrameScript_Method s_scriptFunctions[] = {
     { "ReadyForAccountDataTimes", &Script_ReadyForAccountDataTimes },
     { "IsTrialAccount", &Script_IsTrialAccount },
     { "IsSystemSupported", &Script_IsSystemSupported },
+#if defined(WOWDECOMP_PLATFORM_WEB)
+    { "IsWebClient", &Script_IsWebClient },
+#endif
 };
 
 // VERIFY: 56bca61d auto

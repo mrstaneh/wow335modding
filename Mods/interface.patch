@@ -1,3 +1,33 @@
+diff -ruN orig/Interface/GlueXML/AccountLogin.lua work/Interface/GlueXML/AccountLogin.lua
+--- orig/Interface/GlueXML/AccountLogin.lua
++++ work/Interface/GlueXML/AccountLogin.lua
+@@ -29,7 +29,11 @@
+ 	self:SetCamera(0);
+ 	self:SetSequence(0);
+ 	
+-	if (IsStreamingTrial()) then
++	if ( IsWebClient ) then
++		-- browser build: a still picture, the animated scene is too slow there for now
++		AccountLoginWebBackground:Show();
++		AccountLoginLogo:Hide(); -- the picture has its own logo
++	elseif (IsStreamingTrial()) then
+ 		AccountLoginCinematicsButton:Disable();
+ 		AccountLogin:SetModel("Interface\\Glues\\Models\\UI_MainMenu\\UI_MainMenu.m2");
+ 	else
+diff -ruN orig/Interface/GlueXML/AccountLogin.xml work/Interface/GlueXML/AccountLogin.xml
+--- orig/Interface/GlueXML/AccountLogin.xml
++++ work/Interface/GlueXML/AccountLogin.xml
+@@ -94,6 +94,10 @@
+ 		<Frames>
+ 			<Frame name="AccountLoginUI" setAllPoints="true">
+ 				<Layers>
++					<Layer level="BACKGROUND">
++						<!-- the browser build shows this still instead of the 3D login scene (AccountLogin_OnLoad) -->
++						<Texture name="AccountLoginWebBackground" file="Interface\Glues\LoadingScreens\LoadScreenNorthrend" setAllPoints="true" hidden="true"/>
++					</Layer>
+ 					<Layer level="ARTWORK">
+ 						<Texture file="Interface\Glues\Mainmenu\Glues-BlizzardLogo">
+ 							<Size>
 diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStrings.lua
 --- orig/Interface/GlueXML/GlueStrings.lua
 +++ work/Interface/GlueXML/GlueStrings.lua
