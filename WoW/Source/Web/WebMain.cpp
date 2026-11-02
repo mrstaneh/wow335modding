@@ -20,10 +20,12 @@ int main() {
 
     chdir("/wow"); // the client's data paths are relative ("Data\\common.MPQ")
 
-    // A first-run Config.wtf: no intro movie (there is no video decoder here), the agreements already seen.
+    // A first-run Config.wtf: no intro movie (there is no video decoder here), the agreements already seen, and the
+    // most detailed clouds (the default, 0, stretches a 128x128 texture over the sky; only changed rows are uploaded).
     if (FILE* config = fopen("/wow/WTF/Config.wtf", "wx")) {
         fputs("SET locale \"enUS\"\nSET accounttype \"LK\"\nSET gxResolution \"1280x800\"\nSET gxWindow \"1\"\n"
-              "SET movie \"0\"\nSET readTOS \"1\"\nSET readEULA \"1\"\nSET readTerminationWithoutNotice \"1\"\n", config);
+              "SET movie \"0\"\nSET readTOS \"1\"\nSET readEULA \"1\"\nSET readTerminationWithoutNotice \"1\"\n"
+              "SET skyCloudLOD \"3\"\n", config);
         fclose(config);
     }
 
