@@ -26,6 +26,7 @@
 #include "WoW/Source/DB/Rec/LightRec.h"
 #include "WoW/Source/DB/Rec/LightSkyboxRec.h"
 #include "WoW/Source/DB/Rec/LiquidTypeRec.h"
+#include "WoW/Source/DB/Rec/MapRec.h"
 #include "WoW/Source/Game/GameTime.h"
 #include "WoW/Source/WorldClient/CPortalView.h"
 #include "WoW/Source/WorldClient/World.h"
@@ -59,6 +60,28 @@ int32_t DayNight::s_mapId;
 
 // STATIC: 0x00D38AC8
 static CVar* s_cvSkyCloudLOD;
+
+// wow335modding: not in the original client. Darker nights, 0 = Blizzard's lighting, 1 = black at midnight.
+static CVar* s_cvNightDarkness;
+
+// wow335modding: 1 by day, down to 1 - nightDarkness at night, fading over dusk (20:00-22:00) and dawn (04:00-06:00).
+static float NightBrightness(float dayProgression) {
+    float minutes = dayProgression * 1440.0f;
+    float night = 0.0f;
+
+    if (minutes >= 22.0f * 60.0f || minutes < 4.0f * 60.0f) {
+        night = 1.0f;
+    } else if (minutes >= 20.0f * 60.0f) {
+        night = (minutes - 20.0f * 60.0f) / 120.0f;
+    } else if (minutes < 6.0f * 60.0f) {
+        night = 1.0f - (minutes - 4.0f * 60.0f) / 120.0f;
+    }
+
+    night = night * night * (3.0f - 2.0f * night);
+    float darkness = s_cvNightDarkness ? s_cvNightDarkness->m_floatValue : 0.0f;
+    darkness = darkness < 0.0f ? 0.0f : darkness > 1.0f ? 1.0f : darkness;
+    return 1.0f - darkness * night;
+}
 
 // STATIC: 0x00D38ADC
 int32_t DayNight::g_forceFullUpdate;
@@ -2568,6 +2591,10 @@ void DayNight::LoadMap(int32_t mapId) {
     info.m_flashBlend = 0;
     DayNight::s_lightFlags = 0;
     s_cvSkyCloudLOD = CVar::Register("SkyCloudLOD", nullptr, 0, "0", CWorldParam::CloudLODCallback, 1, false, nullptr, false);
+    // wow335modding: saved to Config.wtf like the other graphics settings
+    s_cvNightDarkness = CVar::Register("nightDarkness", "Darker nights: 0 = normal, 1 = black at midnight", 1, "0.5", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
+    // wow335modding: read in CGWorldFrame (WorldFrame.cpp); not saved, so every session starts on the real time
+    CVar::Register("timePreview", "Show this hour of the day (e.g. 23.5 = 23:30); -1 = the real time", 0, "-1", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
     ConsoleCommandRegister("SkySunGlare", SkySunGlare, CATEGORY_GRAPHICS, "0, 1");
     DayNight::g_forceFullUpdate = 1;
 }
@@ -2690,6 +2717,28 @@ void DayNight::SetColors() {
         info.m_bands.m_oceanDeepAlpha = 1.0f;
         info.m_bands.m_waterDeepAlpha = 1.0f;
         info.m_bands.m_waterShallowAlpha = 0.5f;
+    }
+
+    // wow335modding: darker nights in the open world (dungeons have no day and night). Everything below derives
+    // the scene lights, fog and sky from these bands. The sun and moon color stays, so the moon still shines.
+    const MapRec* map = g_mapDB.GetRecord(DayNight::s_mapId);
+    float brightness = map && map->m_instanceType == 0 ? NightBrightness(info.m_dayProgression) : 1.0f;
+
+    if (brightness < 1.0f) {
+        info.m_bands.m_ambient = DayNight::DarkenColor(info.m_bands.m_ambient, brightness);
+        info.m_bands.m_diffuse = DayNight::DarkenColor(info.m_bands.m_diffuse, brightness);
+
+        for (CImVector& color : info.m_bands.m_skyColors) {
+            color = DayNight::DarkenColor(color, brightness);
+        }
+
+        for (int32_t i = 1; i < 5; i++) {
+            info.m_bands.m_sunCloudColors[i] = DayNight::DarkenColor(info.m_bands.m_sunCloudColors[i], brightness);
+        }
+
+        for (CImVector& color : info.m_bands.m_waterColors) {
+            color = DayNight::DarkenColor(color, brightness);
+        }
     }
 
     DayNight::SetLightColors();

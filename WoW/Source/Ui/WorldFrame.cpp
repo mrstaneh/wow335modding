@@ -1599,6 +1599,19 @@ void CGWorldFrame::UpdateDayNight(float deltaSec) {
         }
     }
 
+    // wow335modding: /console timePreview <hour> shows that time of day locally (registered in DayNight.cpp)
+    static CVar* s_timePreview = nullptr;
+
+    if (!s_timePreview) {
+        s_timePreview = CVar::LookupRegistered("timePreview");
+    }
+
+    if (s_timePreview && s_timePreview->m_floatValue >= 0.0f) {
+        float hours = fmodf(s_timePreview->m_floatValue, 24.0f);
+        info->m_timeOfDay = static_cast<uint32_t>(hours * 60.0f);
+        info->m_dayProgression = hours / 24.0f;
+    }
+
     info->m_weatherIntensity = World::s_weather->m_densityBlend * World::s_weather->m_fogIntensity;
 }
 
