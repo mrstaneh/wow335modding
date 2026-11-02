@@ -5,12 +5,37 @@ set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "${SOUNDENGINE_DEFINITIO
 set(FMODEX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fmodex)
 set(FMODEX_FLAC_DIR ${FMODEX_DIR}/lib/flac-1.1.4)
 
-# wow335modding: the browser build has no FMOD Ex yet (its platform layer is Windows audio and x86 assembly);
-# only its headers, so SoundEngine compiles. ponytail: silent for now, a Web Audio output comes later.
+# wow335modding: the browser build compiles FMOD Ex's portable core with its own platform layer in fmodex/web/src
+# (pthreads, and output through Web Audio). The Windows layer (win32/src: DirectSound, x86 assembly) stays out.
 if (WOWDECOMP_PLATFORM_WEB)
-    add_library(fmodex INTERFACE)
-    target_include_directories(fmodex INTERFACE ${FMODEX_DIR}/src)
-    file(GLOB SOUNDENGINE_SOURCES CONFIGURE_DEPENDS "*.cpp" "Web/*.cpp")
+    file(GLOB FMODEX_SOURCES CONFIGURE_DEPENDS
+        "${FMODEX_DIR}/src/*.cpp"
+        "${FMODEX_DIR}/web/src/*.cpp"
+        "${FMODEX_DIR}/win32/src/fmod_dsp_distortion.cpp"         # portable C (its SSE path is off on the web)
+        "${FMODEX_DIR}/win32/src/fmod_dsp_resampler_linear.cpp"
+        "${FMODEX_DIR}/lib/ogg_vorbis/ogg/src/*.c"
+        "${FMODEX_DIR}/lib/ogg_vorbis/vorbis/lib/*.c"
+        "${FMODEX_FLAC_DIR}/src/libFLAC/*.c"
+        "${FMODEX_DIR}/lib/freeverb/*.cpp"
+        "${FMODEX_DIR}/lib/sfx/foreverb/*.cpp"
+    )
+    add_library(fmodex STATIC ${FMODEX_SOURCES})
+    target_include_directories(fmodex
+        PUBLIC
+            ${FMODEX_DIR}/src
+        PRIVATE
+            ${FMODEX_DIR}/web/src
+            ${FMODEX_DIR}/lib/ogg_vorbis/ogg/include
+            ${FMODEX_DIR}/lib/ogg_vorbis/vorbis/include
+            ${FMODEX_DIR}/lib/ogg_vorbis/vorbis/lib
+            ${FMODEX_FLAC_DIR}/include
+            ${FMODEX_FLAC_DIR}/src/libFLAC/include
+            ${FMODEX_DIR}/lib/sfx/foreverb
+            ${FMODEX_DIR}/lib/freeverb
+    )
+    target_compile_definitions(fmodex PRIVATE FLAC__NO_DLL FLAC__HAS_OGG=1)
+
+    file(GLOB SOUNDENGINE_SOURCES CONFIGURE_DEPENDS "*.cpp")
     add_library(SoundEngine STATIC ${SOUNDENGINE_SOURCES})
     target_include_directories(SoundEngine PUBLIC ${CMAKE_SOURCE_DIR})
     target_link_libraries(SoundEngine PUBLIC fmodex)

@@ -279,8 +279,9 @@ typedef enum
     FMOD_OUTPUTTYPE_XBOX360,         /* Xbox 360    - Native hardware output. (Default on Xbox 360) */
     FMOD_OUTPUTTYPE_PSP,             /* PSP         - Native hardware output. (Default on PSP) */
 	FMOD_OUTPUTTYPE_WII,			 /* Wii			- Native hardware output. (Default on Wii) */
+    FMOD_OUTPUTTYPE_WEBAUDIO,        /* Browser     - Web Audio through an AudioWorklet. (Default in the browser) wow335modding */
 
-    FMOD_OUTPUTTYPE_MAX,             /* Maximum number of output types supported. */
+    FMOD_OUTPUTTYPE_MAX,            /* Maximum number of output types supported. */
     FMOD_OUTPUTTYPE_FORCEINT = 65536 /* Makes sure this enum is signed 32bit. */
 } FMOD_OUTPUTTYPE;
 

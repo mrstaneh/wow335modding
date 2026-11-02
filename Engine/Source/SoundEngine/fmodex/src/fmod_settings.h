@@ -410,6 +410,19 @@
 
     #undef FMOD_SUPPORT_MYEARS
 
+#elif defined(PLATFORM_LINUX) && defined(__EMSCRIPTEN__)
+
+    /* wow335modding: the browser build. Plain C mixers (no SSE assembly), output through Web Audio
+       (fmodex/web/src), and none of what a page cannot do: CD audio, internet streams, recording, plugins. */
+    #define FMOD_SUPPORT_WEBAUDIO
+
+    #undef FMOD_SUPPORT_ASF
+    #undef FMOD_SUPPORT_CDDA
+    #undef FMOD_SUPPORT_NET
+    #undef FMOD_SUPPORT_RECORDING
+    #undef FMOD_SUPPORT_DLLS
+    #undef FMOD_SUPPORT_MYEARS
+
 #elif defined(PLATFORM_LINUX)
 
     #define FMOD_SUPPORT_OSS
