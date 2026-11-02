@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 typedef int BOOL;
@@ -143,33 +144,40 @@ static inline void ExitProcess(UINT code) {
     _exit((int)code);
 }
 
-/* Critical sections are recursive mutexes. */
+/* Critical sections are recursive mutexes, kept on the heap: the client embeds critical sections in packed structs
+ * (#pragma pack(1)) where an inline pthread_mutex_t would sit unaligned, and wasm atomics need aligned memory. A
+ * pointer is fine at any alignment. The struct keeps the Win32 size (24 bytes) so the client's layouts stay put. */
 typedef struct _CRITICAL_SECTION {
-    pthread_mutex_t mutex;
+    pthread_mutex_t* mutex;
+    char unused[24 - sizeof(pthread_mutex_t*)];
 } CRITICAL_SECTION, *LPCRITICAL_SECTION;
 
 static inline void InitializeCriticalSection(LPCRITICAL_SECTION cs) {
     pthread_mutexattr_t attr;
+    pthread_mutex_t* mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-    pthread_mutex_init(&cs->mutex, &attr);
+    pthread_mutex_init(mutex, &attr);
     pthread_mutexattr_destroy(&attr);
+    cs->mutex = mutex;
 }
 
 static inline void EnterCriticalSection(LPCRITICAL_SECTION cs) {
-    pthread_mutex_lock(&cs->mutex);
+    pthread_mutex_lock(cs->mutex);
 }
 
 static inline BOOL TryEnterCriticalSection(LPCRITICAL_SECTION cs) {
-    return pthread_mutex_trylock(&cs->mutex) == 0;
+    return pthread_mutex_trylock(cs->mutex) == 0;
 }
 
 static inline void LeaveCriticalSection(LPCRITICAL_SECTION cs) {
-    pthread_mutex_unlock(&cs->mutex);
+    pthread_mutex_unlock(cs->mutex);
 }
 
 static inline void DeleteCriticalSection(LPCRITICAL_SECTION cs) {
-    pthread_mutex_destroy(&cs->mutex);
+    pthread_mutex_destroy(cs->mutex);
+    free(cs->mutex);
+    cs->mutex = NULL;
 }
 
 /* Interlocked operations return what Windows returns: the new value for Increment/Decrement, the old one otherwise. */
