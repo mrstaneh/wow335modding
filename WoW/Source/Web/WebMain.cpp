@@ -10,9 +10,10 @@
 #include "WoW/Source/Client.h"
 
 int main() {
-    // The install folder (Process/Web/Process.cpp): Data comes over HTTP (System/File/Web/WebFile.h), the folders
-    // the client writes to live in memory for the session.
-    // ponytail: WTF and Cache are lost on reload; mount IDBFS there to keep settings.
+    // The install folder (Process/Web/Process.cpp): Data comes over HTTP (System/File/Web/WebFile.h). WTF is kept in
+    // the browser's IndexedDB (mounted by the page, Tools/WebClient/index.html); the other folders the client writes
+    // to live in memory for the session.
+    // ponytail: Cache (WDB) is lost on reload; mount it like WTF if refetching creature/item info gets slow.
     for (const char* directory : { "/wow", "/wow/WTF", "/wow/Cache", "/wow/Logs", "/wow/Screenshots" }) {
         mkdir(directory, 0777);
     }

@@ -37,9 +37,9 @@ if (WOWDECOMP_PLATFORM_WEB)
     # main() on a worker thread, so the client's blocking main loop works (Web/WebMain.cpp); it renders into its own
     # OffscreenCanvas and posts frames to the page (Engine/Source/Gx/CGxDeviceWebGl/WebGl.js)
     target_link_options(Wow PRIVATE "-pthread" "-sPROXY_TO_PTHREAD" "-sPTHREAD_POOL_SIZE=24"
-        "-sALLOW_MEMORY_GROWTH=1" "-sMAXIMUM_MEMORY=4GB" "-sMIN_WEBGL_VERSION=2" "-sMAX_WEBGL_VERSION=2" "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$stringToNewUTF8"
+        "-sALLOW_MEMORY_GROWTH=1" "-sMAXIMUM_MEMORY=4GB" "-sMIN_WEBGL_VERSION=2" "-sMAX_WEBGL_VERSION=2" "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$stringToNewUTF8" "-sEXPORTED_RUNTIME_METHODS=FS,IDBFS,addRunDependency,removeRunDependency"
         "--js-library=${CMAKE_SOURCE_DIR}/Engine/Source/Gx/CGxDeviceWebGl/WebGl.js"
-        "--js-library=${CMAKE_SOURCE_DIR}/Engine/Source/SoundEngine/fmodex/web/src/WebAudio.js" "-Wl,--error-limit=0" "-sSTACK_SIZE=4MB" "-sDEFAULT_PTHREAD_STACK_SIZE=1MB" "--profiling-funcs" "-sJSPI" "-fwasm-exceptions" "-sSUPPORT_LONGJMP=wasm")
+        "--js-library=${CMAKE_SOURCE_DIR}/Engine/Source/SoundEngine/fmodex/web/src/WebAudio.js" "-Wl,--error-limit=0" "-sSTACK_SIZE=4MB" "-sDEFAULT_PTHREAD_STACK_SIZE=1MB" "--profiling-funcs" "-sJSPI" "-fwasm-exceptions" "-sSUPPORT_LONGJMP=wasm" "-lidbfs.js")
     # the JS libraries are link inputs too, so editing one relinks
     set_target_properties(Wow PROPERTIES LINK_DEPENDS "${CMAKE_SOURCE_DIR}/Engine/Source/Gx/CGxDeviceWebGl/WebGl.js;${CMAKE_SOURCE_DIR}/Engine/Source/SoundEngine/fmodex/web/src/WebAudio.js")
 else ()

@@ -41,6 +41,24 @@
     wowPresent(frame) { view.transferFromImageBitmap(frame); status.hidden = true; },
     print: (text) => console.log(text),
     printErr: (text) => console.error(text),
+    // WTF (settings, keybinds, macros, addon SavedVariables) lives in this browser's IndexedDB, loaded before main()
+    // and saved every few seconds and when the page is hidden. The client rewrites whole files, so only what changed
+    // since the last save can be lost.
+    preRun: [({ FS, IDBFS, addRunDependency, removeRunDependency }) => {
+      FS.mkdir('/wow');
+      FS.mkdir('/wow/WTF');
+      FS.mount(IDBFS, {}, '/wow/WTF');
+      addRunDependency('wtf');
+      FS.syncfs(true, (err) => { if (err) console.error('Loading saved settings failed:', err); removeRunDependency('wtf'); });
+      let saving = false;
+      const save = () => {
+        if (saving) return;
+        saving = true;
+        FS.syncfs(false, (err) => { saving = false; if (err) console.error('Saving settings failed:', err); });
+      };
+      setInterval(save, 5000);
+      document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+    }],
   };
   if (!crossOriginIsolated) status.textContent = 'Needs cross-origin isolation: open this page through Tools/WebClient/serve.py.';
 </script>
