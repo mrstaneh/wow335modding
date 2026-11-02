@@ -766,13 +766,13 @@ void CGxDeviceWebGl::ScenePresent() {
 
     this->WaitForFPSCap();
 
-    // Frames nobody sees cost the GPU all the same: at most one per display refresh (60 Hz).
+    // At most one frame per display refresh (60 Hz), and the wait is spent back in the browser: this thread runs the
+    // client's endless main loop, so without yielding here the browser's own work for it (releasing presented frames,
+    // among others) piles up until the browser stalls the thread for seconds to catch up. emscripten_sleep returns to
+    // the browser's event loop (JSPI, -sJSPI) and resumes the frame afterwards; it yields even when no time is left.
     static uint32_t s_lastPresent;
     uint32_t elapsed = OsGetAsyncTimeMs() - s_lastPresent;
-
-    if (elapsed < 16) {
-        OsSleep(16 - elapsed);
-    }
+    emscripten_sleep(elapsed < 16 ? 16 - elapsed : 0);
 
     s_lastPresent = OsGetAsyncTimeMs();
     this->ShaderConstantsClear();

@@ -22,8 +22,11 @@ if (EMSCRIPTEN)
     # _MSC_VER or _WIN32; SSE intrinsics map to WebAssembly SIMD.
     # Engine/Source/Os/Web/Compat holds a minimal windows.h and a forced compat header.
     # -pthread: the client's threads become Web Workers (needs a cross-origin isolated page).
+    # -fwasm-exceptions -sSUPPORT_LONGJMP=wasm: C++ exceptions and setjmp/longjmp (Lua's error handling) on WebAssembly exceptions instead of JavaScript
+    # call wrappers, so no JavaScript frames sit between main() and the frame present, which yields to the browser
+    # (JSPI cannot suspend through JavaScript frames). Must match at link time (WoW/Source/CMakeLists.txt).
     add_compile_options(-pthread -fms-extensions -fms-compatibility -fms-compatibility-version=19.33 -fdelayed-template-parsing
-        -Wno-c++11-narrowing -Wno-register -msimd128 -msse2
+        -Wno-c++11-narrowing -Wno-register -msimd128 -msse2 -fwasm-exceptions -sSUPPORT_LONGJMP=wasm
         "SHELL:-include ${CMAKE_SOURCE_DIR}/Engine/Source/Os/Web/Compat/WebCompat.h")
     include_directories(BEFORE SYSTEM ${CMAKE_SOURCE_DIR}/Engine/Source/Os/Web/Compat)
 elseif (NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
