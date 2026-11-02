@@ -1,5 +1,5 @@
 // wow335modding: browser build of File/Win64 (File.cpp, Filestack.cpp, Filestack_Streaming.cpp).
-// Files go through POSIX calls on Emscripten's virtual file system, so they work on whatever storage it mounts.
+// Files go through POSIX calls (WebFile.h: the game data over HTTP, the rest on Emscripten's in-memory file system).
 // Game paths use backslashes; MakeUnivPath turns them into forward slashes. A stream's m_fileHandle holds the file
 // descriptor (INVALID_HANDLE_VALUE is -1, an invalid descriptor too). There is no streaming (the trial client's
 // on-demand downloads): its open falls through to the next file system in the stack.
@@ -18,6 +18,7 @@
 #include "Engine/Source/BlizzardCore/Source/System/Debug/Debug.h"
 #include "Engine/Source/BlizzardCore/Source/System/File/File.h"
 #include "Engine/Source/BlizzardCore/Source/System/File/Filestack_Streaming.h"
+#include "Engine/Source/BlizzardCore/Source/System/File/Web/WebFile.h"
 #include "Engine/Source/BlizzardCore/Source/System/Lock/Lock.h"
 #include "Engine/Source/BlizzardCore/Source/System/Memory/MemoryStorm.h"
 #include "Engine/Source/BlizzardCore/Source/System/Memory/TempBuffer.h"
@@ -99,7 +100,7 @@ bool System_File::Close(Blizzard::File::Filesystem* fs, System_File::Stacked::Fi
     Blizzard::File::StreamRecord* stream = parms->m_stream;
 
     if (stream->m_fileHandle != INVALID_HANDLE_VALUE) {
-        close(ToFd(stream->m_fileHandle));
+        WebFile::Close(ToFd(stream->m_fileHandle));
     }
 
     SMemFree(stream, __FILE__, __LINE__, 0);
@@ -118,7 +119,7 @@ void System_File::GetFileInfoByFile(Blizzard::File::StreamRecord* file) {
     }
 
     struct stat st;
-    if (fstat(ToFd(file->m_fileHandle), &st) != 0) {
+    if (WebFile::Fstat(ToFd(file->m_fileHandle), &st) != 0) {
         return;
     }
 
@@ -137,7 +138,7 @@ bool System_File::Exists(Blizzard::File::Filesystem* fs, System_File::Stacked::F
     NativePath(parms->m_path, path, sizeof(path));
     struct stat st;
 
-    if (stat(path, &st) != 0) {
+    if (WebFile::Stat(path, &st) != 0) {
         parms->m_info->m_existence = 0;
     } else {
         parms->m_info->m_existence = S_ISDIR(st.st_mode) ? 2 : 1;
@@ -200,9 +201,9 @@ bool System_File::read_overlapped(Blizzard::File::StreamRecord* file, void* buff
     ssize_t result;
     if (overlapped) {
         off_t offset = static_cast<off_t>((static_cast<uint64_t>(overlapped->OffsetHigh) << 32) | overlapped->Offset);
-        result = pread(fd, buffer, *count, offset);
+        result = WebFile::Pread(fd, buffer, *count, offset);
     } else {
-        result = read(fd, buffer, *count);
+        result = WebFile::Read(fd, buffer, *count);
     }
 
     if (result >= 0) {
@@ -298,6 +299,32 @@ bool System_File::ProcessDirFast(Blizzard::File::Filesystem* fs, System_File::St
     const char* path = parms->m_path;
     char native[1024];
     NativePath(path, native, sizeof(native));
+
+    std::vector<std::pair<std::string, bool>> entries;
+    bool listed = false;
+
+    if (WebFile::ListDirectory(native, entries, listed)) {
+        if (!listed) {
+            Blizzard::File::SetLastError(8);
+            return false;
+        }
+
+        Blizzard::File::ProcessDirParms dirParms;
+        dirParms.m_pathRoot = path;
+        dirParms.m_cookie = parms->m_cookie;
+
+        for (const auto& entry : entries) {
+            dirParms.m_filename = entry.first.c_str();
+            dirParms.m_isDir = entry.second;
+
+            if (!parms->m_dircallback(dirParms)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     DIR* dir = opendir(native);
 
     if (!dir) {
@@ -321,7 +348,7 @@ bool System_File::ProcessDirFast(Blizzard::File::Filesystem* fs, System_File::St
             char full[1024];
             Blizzard::String::Format(full, sizeof(full), "%s/%s", native, name);
             struct stat st;
-            isDir = stat(full, &st) == 0 && S_ISDIR(st.st_mode);
+            isDir = WebFile::Stat(full, &st) == 0 && S_ISDIR(st.st_mode);
         }
 
         char filename[1024];
@@ -354,7 +381,7 @@ bool System_File::GetFileInfo(Blizzard::File::Filesystem* fs, System_File::Stack
         NativePath(parms->m_path, path, sizeof(path));
         struct stat st;
 
-        if (stat(path, &st) != 0) {
+        if (WebFile::Stat(path, &st) != 0) {
             Blizzard::File::SetLastError(8);
             return false;
         }
@@ -387,7 +414,7 @@ bool System_File::GetFreeSpace(Blizzard::File::Filesystem* fs, System_File::Stac
 
 bool System_File::GetPos(Blizzard::File::Filesystem* fs, System_File::Stacked::FileParms* parms) {
     Blizzard::File::StreamRecord* stream = parms->m_stream;
-    off_t pos = stream->m_fileHandle == INVALID_HANDLE_VALUE ? -1 : lseek(ToFd(stream->m_fileHandle), 0, SEEK_CUR);
+    off_t pos = stream->m_fileHandle == INVALID_HANDLE_VALUE ? -1 : WebFile::Lseek(ToFd(stream->m_fileHandle), 0, SEEK_CUR);
 
     if (pos < 0) {
         Blizzard::File::SetLastError(8);
@@ -414,7 +441,7 @@ bool System_File::IsReadOnly(Blizzard::File::Filesystem* fs, System_File::Stacke
     NativePath(parms->m_path, path, sizeof(path));
     struct stat st;
 
-    if (stat(path, &st) == 0) {
+    if (WebFile::Stat(path, &st) == 0) {
         return !(st.st_mode & S_IWUSR);
     }
 
@@ -443,7 +470,7 @@ bool System_File::CreateDirectory(Blizzard::File::Filesystem* fs, System_File::S
 
     if (mkdir(path, 0777) == 0 || errno == EEXIST) {
         struct stat st;
-        return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+        return WebFile::Stat(path, &st) == 0 && S_ISDIR(st.st_mode);
     }
 
     Blizzard::File::SetLastError(8);
@@ -500,7 +527,7 @@ bool System_File::Open(Blizzard::File::Filesystem* fs, System_File::Stacked::Fil
     char path[1024];
     NativePath(parms->m_path, path, sizeof(path));
 
-    int fd = open(path, ToOpenFlags(mode), 0666);
+    int fd = WebFile::Open(path, ToOpenFlags(mode), 0666);
     if (fd < 0) {
         Blizzard::File::SetLastError(4);
         Blizzard::File::AddToLastErrorStack(4, Blizzard::String::QuickFormat<1024>("Web Open - %s", path).m_buffer, 1);
@@ -615,7 +642,7 @@ bool System_File::SetPos(Blizzard::File::Filesystem* fs, System_File::Stacked::F
     }
 
     // posMode 0/1/2 is begin/current/end, the same order as SEEK_SET/SEEK_CUR/SEEK_END
-    return lseek(ToFd(stream->m_fileHandle), static_cast<off_t>(parms->m_pos), parms->m_posMode) >= 0;
+    return WebFile::Lseek(ToFd(stream->m_fileHandle), static_cast<off_t>(parms->m_pos), parms->m_posMode) >= 0;
 }
 
 bool System_File::Write(Blizzard::File::Filesystem* fs, System_File::Stacked::FileParms* parms) {

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WoW Web Client</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #canvas { display: block; width: 100vw; height: 100vh; cursor: none; outline: none; }
+  #status { position: fixed; left: 16px; bottom: 12px; color: #c8b27a; font: 13px system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="0"></canvas>
+<div id="status">Loading…</div>
+<script>
+  // The client connects to 127.0.0.1:3724 and to the realm's address; every WebSocket goes to serve.py instead,
+  // which forwards it to that port (/ws/<host>/<port>).
+  const NativeWebSocket = window.WebSocket;
+  function ProxiedWebSocket(url, protocols) {
+    const m = /^wss?:\/\/([^/:]+):(\d+)/.exec(url);
+    if (m) url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/' + m[1] + '/' + m[2];
+    return new NativeWebSocket(url, protocols);
+  }
+  ProxiedWebSocket.prototype = NativeWebSocket.prototype;
+  for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) ProxiedWebSocket[k] = NativeWebSocket[k];
+  window.WebSocket = ProxiedWebSocket;
+
+  const canvas = document.getElementById('canvas');
+  const status = document.getElementById('status');
+  const view = canvas.getContext('bitmaprenderer', { alpha: false });
+  // Canvas pixels = CSS pixels, so mouse coordinates (Os/Web/Input.cpp) need no scaling.
+  // ponytail: no devicePixelRatio, so HiDPI screens render at CSS resolution.
+  function fit() { canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; }
+  fit();
+  window.addEventListener('resize', fit);
+
+  var Module = {
+    canvas,
+    // Frames from the render worker (Engine/Source/Gx/CGxDeviceWebGl/WebGl.js).
+    wowPresent(frame) { view.transferFromImageBitmap(frame); status.hidden = true; },
+    print: (text) => console.log(text),
+    printErr: (text) => console.error(text),
+  };
+  if (!crossOriginIsolated) status.textContent = 'Needs cross-origin isolation: open this page through Tools/WebClient/serve.py.';
+</script>
+<script src="WowWeb.js"></script>
+</body>
+</html>

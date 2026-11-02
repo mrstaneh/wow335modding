@@ -104,6 +104,15 @@ int32_t STORMAPI SErrDisplayError(uint32_t errorcode, const char* filename, int3
     return 1;
 }
 
+int32_t SErrDisplayErrorFmt(uint32_t errorcode, const char* filename, int32_t linenumber, int32_t recoverable, uint32_t exitcode, const char* format, ...) {
+    char description[2048];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(description, sizeof(description), format, args);
+    va_end(args);
+    return SErrDisplayError(errorcode, filename, linenumber, description, recoverable, exitcode, 0);
+}
+
 // Logs: an HSLOG is a FILE*. Game paths use backslashes.
 void STORMAPI SLogInitialize() {
 }

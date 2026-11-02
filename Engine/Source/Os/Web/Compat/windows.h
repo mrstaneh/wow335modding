@@ -57,6 +57,26 @@ typedef LONG_PTR LPARAM, LRESULT;
 #define MAX_PATH 260
 #define INFINITE 0xFFFFFFFF
 #define INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
+/* Values the client passes around as plain data (Os/Web/OsFile.cpp translates them). */
+#define GENERIC_READ 0x80000000
+#define GENERIC_WRITE 0x40000000
+#define FILE_SHARE_READ 0x1
+#define FILE_SHARE_WRITE 0x2
+#define CREATE_NEW 1
+#define CREATE_ALWAYS 2
+#define OPEN_EXISTING 3
+#define OPEN_ALWAYS 4
+#define TRUNCATE_EXISTING 5
+#define FILE_ATTRIBUTE_READONLY 0x1
+#define FILE_ATTRIBUTE_HIDDEN 0x2
+#define FILE_ATTRIBUTE_SYSTEM 0x4
+#define FILE_ATTRIBUTE_DIRECTORY 0x10
+#define FILE_ATTRIBUTE_ARCHIVE 0x20
+#define FILE_ATTRIBUTE_NORMAL 0x80
+#define ERROR_SUCCESS 0
+#define ERROR_FILE_NOT_FOUND 2
+#define ERROR_ACCESS_DENIED 5
+#define ERROR_INVALID_PARAMETER 87
 #define WINAPI
 #define APIENTRY
 #define CALLBACK
@@ -98,6 +118,16 @@ typedef struct tagRECT {
 typedef struct tagPOINT {
     LONG x, y;
 } POINT, *LPPOINT;
+
+/* One last-error value per thread, shared by every file: defined in Os/Web/System.cpp. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+void SetLastError(DWORD error);
+DWORD GetLastError(void);
+#ifdef __cplusplus
+}
+#endif
 
 static inline UINT GetACP(void) {
     return 1252; /* Western European, what the enUS client reports */

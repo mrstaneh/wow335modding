@@ -34,9 +34,11 @@ target_include_directories(Wow
 )
 
 if (WOWDECOMP_PLATFORM_WEB)
-    # main() on a worker thread with an OffscreenCanvas, so the client's blocking main loop works (Web/WebMain.cpp)
-    target_link_options(Wow PRIVATE "-pthread" "-sPROXY_TO_PTHREAD" "-sOFFSCREENCANVAS_SUPPORT" "-sPTHREAD_POOL_SIZE=8"
-        "-sALLOW_MEMORY_GROWTH=1" "-sMAXIMUM_MEMORY=4GB" "-Wl,--error-limit=0")
+    # main() on a worker thread, so the client's blocking main loop works (Web/WebMain.cpp); it renders into its own
+    # OffscreenCanvas and posts frames to the page (Engine/Source/Gx/CGxDeviceWebGl/WebGl.js)
+    target_link_options(Wow PRIVATE "-pthread" "-sPROXY_TO_PTHREAD" "-sPTHREAD_POOL_SIZE=8"
+        "-sALLOW_MEMORY_GROWTH=1" "-sMAXIMUM_MEMORY=4GB" "-sMIN_WEBGL_VERSION=2" "-sMAX_WEBGL_VERSION=2" "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$stringToNewUTF8"
+        "--js-library=${CMAKE_SOURCE_DIR}/Engine/Source/Gx/CGxDeviceWebGl/WebGl.js" "-Wl,--error-limit=0" "-sSTACK_SIZE=4MB" "-sDEFAULT_PTHREAD_STACK_SIZE=1MB" "--profiling-funcs" "-sASSERTIONS=1" "-sSTACK_OVERFLOW_CHECK=2")
 else ()
     target_link_options(Wow PRIVATE "/INCREMENTAL:NO" "/ENTRY:start")
 endif ()

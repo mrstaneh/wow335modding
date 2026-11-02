@@ -193,9 +193,7 @@ void* SCreateThread(uint32_t dwStackSize, uint32_t (STORMAPI* lpStartAddress)(vo
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    if (dwStackSize) {
-        pthread_attr_setstacksize(&attr, dwStackSize);
-    }
+    pthread_attr_setstacksize(&attr, dwStackSize > 0x100000 ? dwStackSize : 0x100000); // see Thread/Web/Thread.cpp
 
     pthread_t thread;
     bool created = pthread_create(&thread, &attr, LaunchThread, launch) == 0;

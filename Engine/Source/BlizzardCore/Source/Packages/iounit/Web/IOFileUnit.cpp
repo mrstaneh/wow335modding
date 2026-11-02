@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include "Engine/Source/BlizzardCore/Source/Packages/iounit/IOFileUnit.h"
 #include "Engine/Source/BlizzardCore/Source/System/File/File.h"
+#include "Engine/Source/BlizzardCore/Source/System/File/Web/WebFile.h"
 #include "Engine/Source/BlizzardCore/Source/System/Memory/MemoryStorm.h"
 #include "Engine/Source/BlizzardCore/Source/System/String/Path.h"
 #include "Engine/Source/BlizzardCore/Source/System/String/String.h"
@@ -14,14 +15,14 @@
 bool IOFileUnit::ReadNative(uint32_t offset, const char* path, void* buffer, uint32_t count, uint32_t* bytesRead) {
     char native[1024];
     Blizzard::String::MakeUnivPath(path, native, sizeof(native));
-    int fd = open(native, O_RDONLY);
+    int fd = WebFile::Open(native, O_RDONLY);
 
     if (fd < 0) {
         return false;
     }
 
-    ssize_t read = pread(fd, buffer, count, offset);
-    close(fd);
+    ssize_t read = WebFile::Pread(fd, buffer, count, offset);
+    WebFile::Close(fd);
 
     if (read < 0) {
         return false;

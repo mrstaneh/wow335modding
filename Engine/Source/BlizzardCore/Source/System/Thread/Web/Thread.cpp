@@ -167,9 +167,9 @@ bool Blizzard::Thread::Create(uint32_t (*function)(void*), void* param, ThreadRe
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    if (stackSize > 0) {
-        pthread_attr_setstacksize(&attr, stackSize);
-    }
+    // Windows reserves at least 1 MB per thread whatever the request; Emscripten's default is 64 KB, and an overflow
+    // there silently overwrites the heap.
+    pthread_attr_setstacksize(&attr, stackSize > 0x100000 ? stackSize : 0x100000);
 
     // a suspended thread (flags & 1) waits in ThreadStarter until m_state is set
     record->m_state = (flags & 1) == 0;
