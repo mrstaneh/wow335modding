@@ -5,6 +5,8 @@
   Directories answer with an X-Wow-Directory header.
 - /ws/<host>/<port>: a WebSocket bridged to a TCP port on this machine (authserver 3724, worldserver 8085), so other
   machines' clients reach the servers here even though the realmlist says 127.0.0.1.
+- /register.html and POST /register: creates game accounts in the AzerothCore database (the login screen's Register
+  button), at most 3 per client address an hour.
 
 Usage: python serve.py [--port 8000] [--build ../../bin/Win] [--data ../../bin/Win/Data]
 On your local network (HTTPS required there): python serve.py --host 0.0.0.0 --cert certs/wow.pem --key certs/wow.key
@@ -18,12 +20,49 @@ import re
 import socket
 import ssl
 import struct
+import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ALLOWED_PORTS = {3724, 8085}
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+# The AzerothCore database, the way Mods/mods.sh reaches it.
+MYSQL = ['docker', 'exec', '-i', '-e', 'MYSQL_PWD=acore', 'ac-mysql', 'mysql', '-uacore', '-N', 'acore_auth']
+# SRP6 as the 3.3.5 client and AzerothCore use it.
+SRP_N = int('894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7', 16)
+SRP_G = 7
+# ponytail: new accounts per client address, in memory; a restart forgets them.
+REGISTERED = {}
+REGISTER_LOCK = threading.Lock()
+
+
+def srp_verifier(username, password, salt):
+    """The verifier AzerothCore stores for this upper-case username and password, little-endian like the database."""
+    x = int.from_bytes(hashlib.sha1(salt + hashlib.sha1(f'{username}:{password}'.encode()).digest()).digest(), 'little')
+    return pow(SRP_G, x, SRP_N).to_bytes(32, 'little')
+
+
+def create_account(username, password):
+    """(HTTP status, message). username is checked to be [A-Z0-9], so it is safe inside the SQL; the rest is hex."""
+    salt = os.urandom(32)
+    sql = (f"INSERT INTO account (username, salt, verifier, expansion, joindate) "
+           f"VALUES ('{username}', UNHEX('{salt.hex()}'), UNHEX('{srp_verifier(username, password, salt).hex()}'), 2, NOW());\n"
+           # what AccountMgr::CreateAccount adds, so the realm list shows a character count
+           "INSERT INTO realmcharacters (realmid, acctid, numchars) SELECT realmlist.id, account.id, 0 FROM realmlist, account "
+           "LEFT JOIN realmcharacters ON acctid = account.id WHERE acctid IS NULL;\n")
+    try:
+        done = subprocess.run(MYSQL, input=sql, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return 503, 'The account database is not reachable right now.'
+    if done.returncode == 0:
+        return 200, f'Account {username} created. Go back to the game and log in.'
+    if 'Duplicate entry' in done.stderr:
+        return 409, 'That username is taken.'
+    print('register failed:', done.stderr.strip())
+    return 500, 'Creating the account failed.'
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -44,6 +83,8 @@ class Handler(BaseHTTPRequestHandler):
             root, rest = self.server.data, path[len('/data'):]
         elif path in ('/', '/index.html'):
             return os.path.join(HERE, 'index.html')
+        elif path == '/register.html':
+            return os.path.join(HERE, 'register.html')
         else:
             root, rest = self.server.build, path
         full = os.path.realpath(os.path.join(root, rest.lstrip('/')))
@@ -58,6 +99,36 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith('/ws/'):
             return self.websocket()
         self.serve(True)
+
+    def do_POST(self):
+        if self.path != '/register':
+            return self.reply(404, '')
+        form = parse_qs(self.rfile.read(min(int(self.headers.get('Content-Length', 0)), 1024)).decode(errors='replace'))
+        username = form.get('username', [''])[0].upper()
+        password = form.get('password', [''])[0].upper()  # the client upper-cases passwords before hashing
+        if not re.fullmatch(r'[A-Z0-9]{3,16}', username) or not re.fullmatch(r'[ -~]{4,16}', password):
+            return self.reply(400, 'Use 3 to 16 letters and digits for the username and 4 to 16 plain characters for the password.')
+        # Behind a reverse proxy every request comes from this machine; the proxy names the real client.
+        client = self.client_address[0]
+        if client in ('127.0.0.1', '::1') and self.headers.get('X-Forwarded-For'):
+            client = self.headers['X-Forwarded-For'].split(',')[0].strip()
+        with REGISTER_LOCK:
+            now = time.time()
+            recent = [t for t in REGISTERED.get(client, []) if now - t < 3600]
+            if len(recent) >= 3:
+                return self.reply(429, 'Too many new accounts from your address; try again in an hour.')
+            status, message = create_account(username, password)
+            if status == 200:
+                REGISTERED[client] = recent + [now]
+        self.reply(status, message)
+
+    def reply(self, status, text):
+        body = text.encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def serve(self, body):
         path = self.resolve()

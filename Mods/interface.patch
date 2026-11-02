@@ -1,7 +1,7 @@
 diff -ruN orig/Interface/GlueXML/AccountLogin.lua work/Interface/GlueXML/AccountLogin.lua
 --- orig/Interface/GlueXML/AccountLogin.lua
 +++ work/Interface/GlueXML/AccountLogin.lua
-@@ -29,7 +29,11 @@
+@@ -29,7 +29,12 @@
  	self:SetCamera(0);
  	self:SetSequence(0);
  	
@@ -10,10 +10,39 @@ diff -ruN orig/Interface/GlueXML/AccountLogin.lua work/Interface/GlueXML/Account
 +		-- browser build: a still picture, the animated scene is too slow there for now
 +		AccountLoginWebBackground:Show();
 +		AccountLoginLogo:Hide(); -- the picture has its own logo
++		AccountLoginRegisterButton:Show(); -- the page next to the client creates accounts (Tools/WebClient/serve.py)
 +	elseif (IsStreamingTrial()) then
  		AccountLoginCinematicsButton:Disable();
  		AccountLogin:SetModel("Interface\\Glues\\Models\\UI_MainMenu\\UI_MainMenu.m2");
  	else
+@@ -44,6 +49,15 @@
+ 
+ 	-- Try to show the EULA or the TOS
+ 	AccountLogin_ShowUserAgreements();
++
++	-- A private server: no Blizzard account or community pages, launcher, rating notice or terms. Here rather than in
++	-- OnLoad because LocalizeFrames shows the rating notice after that.
++	AccountLoginManageAccountButton:Hide();
++	AccountLoginCommunityButton:Hide();
++	AccountLoginShowLauncher:Hide();
++	WorldOfWarcraftRating:Hide();
++	AccountLoginTOSButton:Hide();
++	AccountLoginCreditsButton:SetPoint("BOTTOM", AccountLoginExitButton, "TOP", 0, 80); -- where the terms button was
+ 	
+ 	local serverName = GetServerName();
+ 	if(serverName) then
+@@ -197,6 +211,11 @@
+ 	LaunchURL(AUTH_NO_TIME_URL);
+ end
+ 
++function AccountLogin_Register()
++	PlaySound("gsLoginNewAccount");
++	LaunchURL("register.html"); -- relative to the client's page
++end
++
+ function AccountLogin_LaunchCommunitySite()
+ 	PlaySound("gsLoginNewAccount");
+ 	LaunchURL(COMMUNITY_URL);
 diff -ruN orig/Interface/GlueXML/AccountLogin.xml work/Interface/GlueXML/AccountLogin.xml
 --- orig/Interface/GlueXML/AccountLogin.xml
 +++ work/Interface/GlueXML/AccountLogin.xml
@@ -28,6 +57,28 @@ diff -ruN orig/Interface/GlueXML/AccountLogin.xml work/Interface/GlueXML/Account
  					<Layer level="ARTWORK">
  						<Texture file="Interface\Glues\Mainmenu\Glues-BlizzardLogo">
  							<Size>
+@@ -513,6 +517,21 @@
+ 							</OnClick>
+ 						</Scripts>
+ 					</Button>
++					<!-- browser build only (AccountLogin_OnLoad), where the community site button was -->
++					<Button name="AccountLoginRegisterButton" inherits="GlueButtonSmallTemplateBlue" text="REGISTER_ACCOUNT" hidden="true">
++						<Anchors>
++							<Anchor point="BOTTOMLEFT">
++								<Offset>
++									<AbsDimension x="10" y="135"/>
++								</Offset>
++							</Anchor>
++						</Anchors>
++						<Scripts>
++							<OnClick>
++								AccountLogin_Register();
++							</OnClick>
++						</Scripts>
++					</Button>
+ 					<Button name="AccountLoginUpgradeAccountButton" inherits="GlueButtonTemplateBlue" text="UPGRADE_ACCOUNT" hidden="true">
+ 						<Size x="320" y="60"/>
+ 						<Anchors>
 diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStrings.lua
 --- orig/Interface/GlueXML/GlueStrings.lua
 +++ work/Interface/GlueXML/GlueStrings.lua
@@ -49,3 +100,11 @@ diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStri
  ENTER_PIN_NUMBER = "Enter Your PIN";
  ENTER_WORLD = "Enter World";
  ENVIRONMENT_DETAIL = "Environment Detail";
+@@ -717,6 +717,7 @@
+ REALM_TYPE_TOURNAMENT_WARNING = "This account is currently not flagged to participate in the tournament realms.\n\nFor more information regarding the World of Warcraft Arena Tournament, please visit: www.worldofwarcraft.com.";
+ REFRESH_RATE = "Refresh";
+ REGEN = "REGEN %.0f";
++REGISTER_ACCOUNT = "Register";
+ RELEASE_BUILD = "Release";
+ RESET_SERVER_SETTINGS = "Are you sure you want to reset all user options to their defaults the next time you login?";
+ RESET_SETTINGS = "Reset User Options";
