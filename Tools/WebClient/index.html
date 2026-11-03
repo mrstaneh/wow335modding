@@ -51,8 +51,28 @@
     canvas.height = box.blockSize;
   }).observe(canvas);
 
+  // The display's refresh period (60, 120, 144 Hz...), for the game's frame pacing (CGxDeviceWebGl::ScenePresent asks
+  // through Module.wowFrameMs). This thread is idle, so its animation frames arrive once per refresh; the median of the
+  // last second of gaps ignores the odd late one. Hidden tabs get no frames and keep the last value.
+  const refreshGaps = [];
+  let lastRefresh = 0;
+  (function refresh(time) {
+    const gap = time - lastRefresh;
+    lastRefresh = time;
+    if (gap > 2 && gap < 50) {
+      refreshGaps.push(gap);
+      if (refreshGaps.length > 60) refreshGaps.shift();
+    }
+    requestAnimationFrame(refresh);
+  })(0);
+
   var Module = {
     canvas,
+    wowFrameMs() {
+      if (refreshGaps.length < 10) return 1000 / 60;
+      const sorted = [...refreshGaps].sort((a, b) => a - b);
+      return sorted[sorted.length >> 1];
+    },
     // Frames from the render worker (Engine/Source/Gx/CGxDeviceWebGl/WebGl.js).
     wowPresent(frame) { view.transferFromImageBitmap(frame); status.hidden = true; },
     print: (text) => console.log(text),

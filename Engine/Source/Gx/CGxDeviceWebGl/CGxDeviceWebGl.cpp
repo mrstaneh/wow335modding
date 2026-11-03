@@ -750,8 +750,12 @@ void CGxDeviceWebGl::ScenePresent() {
     int32_t height = 0;
     const CRect& window = this->DeviceDefWindow();
 
+    // The display's frame time, measured by the page (index.html wowFrameMs); 60 Hz until it knows.
+    static double s_displayFrameMs = 1000.0 / 60.0;
+
     if (this->m_frameCount % 30 == 0) {
         CanvasSize(width, height);
+        s_displayFrameMs = MAIN_THREAD_EM_ASM_DOUBLE({ return Module.wowFrameMs ? Module.wowFrameMs() : 1000 / 60; });
     }
 
     if (width && (width != static_cast<int32_t>(window.maxX) || height != static_cast<int32_t>(window.maxY))) {
@@ -771,15 +775,19 @@ void CGxDeviceWebGl::ScenePresent() {
 
     this->WaitForFPSCap();
 
-    // At most one frame per display refresh (60 Hz), and the wait is spent back in the browser: this thread runs the
-    // client's endless main loop, so without yielding here the browser's own work for it (releasing presented frames,
-    // among others) piles up until the browser stalls the thread for seconds to catch up. emscripten_sleep returns to
-    // the browser's event loop (JSPI, -sJSPI) and resumes the frame afterwards; it yields even when no time is left.
-    static uint32_t s_lastPresent;
-    uint32_t elapsed = OsGetAsyncTimeMs() - s_lastPresent;
-    emscripten_sleep(elapsed < 16 ? 16 - elapsed : 0);
+    // At most one frame per display refresh (60, 120, 144 Hz...; maxFPS still caps below that), and the wait is spent
+    // back in the browser: this thread runs the client's endless main loop, so without yielding here the browser's own
+    // work for it (releasing presented frames, among others) piles up until the browser stalls the thread for seconds
+    // to catch up. emscripten_sleep returns to the browser's event loop (JSPI, -sJSPI) and resumes the frame
+    // afterwards; it yields even when no time is left.
+    // Frames are due on a running schedule of exact refresh periods (8.33 ms at 120 Hz), so whole-millisecond sleeps
+    // still average out to the display rate; a frame that runs late restarts the schedule instead of rushing to catch up.
+    static double s_nextPresent;
+    now = emscripten_get_now();
+    emscripten_sleep(s_nextPresent > now ? static_cast<uint32_t>(s_nextPresent - now) : 0);
 
-    s_lastPresent = OsGetAsyncTimeMs();
+    now = emscripten_get_now();
+    s_nextPresent = s_nextPresent + s_displayFrameMs > now ? s_nextPresent + s_displayFrameMs : now + s_displayFrameMs;
     this->ShaderConstantsClear();
 }
 
