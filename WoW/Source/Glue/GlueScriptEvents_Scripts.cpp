@@ -36,6 +36,10 @@
 #include "WoW/Source/Glue/CharacterSelection.h"
 #include "WoW/Source/WowServices/BattlenetLogin.h"
 #include "WoW/Source/WowSvcs/WowSvcsClient/AccountData.h"
+#if defined(WOWDECOMP_PLATFORM_WEB)
+#include <cstdlib>
+#include <emscripten.h>
+#endif
 
 int32_t Script_GetLocale(lua_State* L);
 int32_t Script_PlayCreditsMusic(lua_State* L);
@@ -1603,6 +1607,39 @@ static int32_t Script_IsWebClient(lua_State* L) {
     lua_pushboolean(L, 1);
     return 1;
 }
+
+// POST /register next to the client's files (Tools/WebClient/serve.py). The glue thread is a worker, where a
+// synchronous request is allowed; it waits for the reply, a fraction of a second.
+EM_JS(char*, WebRegisterRequest, (const char* username, const char* password, int32_t* status), {
+    var request = new XMLHttpRequest();
+    var text;
+    try {
+        request.open("POST", "register", false);
+        request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+        request.send("username=" + encodeURIComponent(UTF8ToString(username)) + "&password=" + encodeURIComponent(UTF8ToString(password)));
+        HEAP32[status >> 2] = request.status;
+        text = request.responseText;
+    } catch (e) {
+        HEAP32[status >> 2] = 0;
+        text = "Could not reach the server.";
+    }
+    return stringToNewUTF8(text);
+});
+
+// wow335modding: status, message = WebRegisterAccount(username, password); status 200 means the account was created.
+static int32_t Script_WebRegisterAccount(lua_State* L) {
+    if (!lua_isstring(L, 1) || !lua_isstring(L, 2)) {
+        luaL_error(L, "Usage: WebRegisterAccount(\"username\", \"password\")");
+        return 0;
+    }
+
+    int32_t status = 0;
+    char* message = WebRegisterRequest(lua_tolstring(L, 1, nullptr), lua_tolstring(L, 2, nullptr), &status);
+    lua_pushnumber(L, status);
+    lua_pushstring(L, message);
+    free(message);
+    return 2;
+}
 #endif
 
 static FrameScript_Method s_scriptFunctions[] = {
@@ -1721,6 +1758,7 @@ static FrameScript_Method s_scriptFunctions[] = {
     { "IsSystemSupported", &Script_IsSystemSupported },
 #if defined(WOWDECOMP_PLATFORM_WEB)
     { "IsWebClient", &Script_IsWebClient },
+    { "WebRegisterAccount", &Script_WebRegisterAccount },
 #endif
 };
 

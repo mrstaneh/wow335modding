@@ -31,13 +31,45 @@ diff -ruN orig/Interface/GlueXML/AccountLogin.lua work/Interface/GlueXML/Account
  	
  	local serverName = GetServerName();
  	if(serverName) then
-@@ -197,6 +211,11 @@
+@@ -197,6 +211,43 @@
  	LaunchURL(AUTH_NO_TIME_URL);
  end
  
 +function AccountLogin_Register()
 +	PlaySound("gsLoginNewAccount");
-+	LaunchURL("register.html"); -- relative to the client's page
++	RegisterDialog:Show();
++end
++
++function RegisterDialog_Tab(self)
++	if ( self == RegisterDialogUsername ) then
++		RegisterDialogPassword:SetFocus();
++	elseif ( self == RegisterDialogPassword ) then
++		RegisterDialogConfirm:SetFocus();
++	else
++		RegisterDialogUsername:SetFocus();
++	end
++end
++
++-- Creates the account and logs in with it; the server checks the name and password rules and says what is wrong.
++function RegisterDialog_Create()
++	local username = RegisterDialogUsername:GetText();
++	local password = RegisterDialogPassword:GetText();
++	if ( password ~= RegisterDialogConfirm:GetText() ) then
++		RegisterDialogStatus:SetTextColor(1, 0.3, 0.3);
++		RegisterDialogStatus:SetText(REGISTER_PASSWORDS_DIFFER);
++		RegisterDialogConfirm:SetFocus();
++		return;
++	end
++	local status, message = WebRegisterAccount(username, password);
++	if ( status ~= 200 ) then
++		RegisterDialogStatus:SetTextColor(1, 0.3, 0.3);
++		RegisterDialogStatus:SetText(message);
++		return;
++	end
++	RegisterDialog:Hide();
++	AccountLoginAccountEdit:SetText(username);
++	AccountLoginPasswordEdit:SetText(password);
++	AccountLogin_Login();
 +end
 +
  function AccountLogin_LaunchCommunitySite()
@@ -46,7 +78,63 @@ diff -ruN orig/Interface/GlueXML/AccountLogin.lua work/Interface/GlueXML/Account
 diff -ruN orig/Interface/GlueXML/AccountLogin.xml work/Interface/GlueXML/AccountLogin.xml
 --- orig/Interface/GlueXML/AccountLogin.xml
 +++ work/Interface/GlueXML/AccountLogin.xml
-@@ -94,6 +94,10 @@
+@@ -69,6 +69,55 @@
+ 		</PushedTexture>
+ 	</Button>
+ 
++	<!-- the fields of RegisterDialog (browser build), styled like the login screen's -->
++	<EditBox name="RegisterEditTemplate" letters="16" virtual="true">
++		<Size x="200" y="37"/>
++		<Layers>
++			<Layer level="BACKGROUND">
++				<FontString name="$parentLabel" inherits="GlueFontNormalSmall" justifyH="LEFT">
++					<Anchors>
++						<Anchor point="BOTTOMLEFT" relativePoint="TOPLEFT" x="6" y="-4"/>
++					</Anchors>
++				</FontString>
++			</Layer>
++		</Layers>
++		<Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Glues\Common\Glue-Tooltip-Border" tile="true">
++			<BackgroundInsets>
++				<AbsInset left="10" right="5" top="4" bottom="9"/>
++			</BackgroundInsets>
++			<TileSize>
++				<AbsValue val="16"/>
++			</TileSize>
++			<EdgeSize>
++				<AbsValue val="16"/>
++			</EdgeSize>
++		</Backdrop>
++		<Scripts>
++			<OnLoad>
++				self:SetBackdropBorderColor(0.4, 0.4, 0.4);
++				self:SetBackdropColor(0, 0, 0);
++			</OnLoad>
++			<OnEscapePressed>
++				RegisterDialog:Hide();
++			</OnEscapePressed>
++			<OnEnterPressed>
++				RegisterDialog_Create();
++			</OnEnterPressed>
++			<OnTabPressed>
++				RegisterDialog_Tab(self);
++			</OnTabPressed>
++			<OnEditFocusLost>
++				self:HighlightText(0, 0);
++			</OnEditFocusLost>
++			<OnEditFocusGained>
++				self:HighlightText();
++			</OnEditFocusGained>
++		</Scripts>
++		<FontString inherits="GlueEditBoxFont"/>
++		<TextInsets>
++			<AbsInset left="12" bottom="5"/>
++		</TextInsets>
++	</EditBox>
+ 	<Frame name="AccountLoginUIResetFrame" toplevel="true" frameStrata="DIALOG" hidden="true">
+ 		<Size x="1" y="1"/>
+ 		<Anchors>
+@@ -94,6 +143,10 @@
  		<Frames>
  			<Frame name="AccountLoginUI" setAllPoints="true">
  				<Layers>
@@ -57,7 +145,7 @@ diff -ruN orig/Interface/GlueXML/AccountLogin.xml work/Interface/GlueXML/Account
  					<Layer level="ARTWORK">
  						<Texture file="Interface\Glues\Mainmenu\Glues-BlizzardLogo">
  							<Size>
-@@ -513,6 +517,21 @@
+@@ -513,6 +566,21 @@
  							</OnClick>
  						</Scripts>
  					</Button>
@@ -79,6 +167,112 @@ diff -ruN orig/Interface/GlueXML/AccountLogin.xml work/Interface/GlueXML/Account
  					<Button name="AccountLoginUpgradeAccountButton" inherits="GlueButtonTemplateBlue" text="UPGRADE_ACCOUNT" hidden="true">
  						<Size x="320" y="60"/>
  						<Anchors>
+@@ -1071,6 +1139,105 @@
+ 							</Frame>
+ 						</Frames>
+ 					</Frame>
++					<!-- browser build: creates an account through Tools/WebClient/serve.py (WebRegisterAccount) -->
++					<Frame name="RegisterDialog" toplevel="true" setAllPoints="true" hidden="true" enableMouse="true" enableKeyboard="true" frameStrata="DIALOG">
++						<Layers>
++							<Layer level="BACKGROUND">
++								<Texture setAllPoints="true">
++									<Color a="0.75" r="0" g="0" b="0"/>
++								</Texture>
++							</Layer>
++						</Layers>
++						<Frames>
++							<Frame name="$parentBackground">
++								<Size x="372" y="330"/>
++								<Anchors>
++									<Anchor point="CENTER" x="0" y="-20"/>
++								</Anchors>
++								<Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Background" edgeFile="Interface\DialogFrame\UI-DialogBox-Border" tile="true">
++									<BackgroundInsets>
++										<AbsInset left="11" right="12" top="12" bottom="11"/>
++									</BackgroundInsets>
++									<TileSize>
++										<AbsValue val="32"/>
++									</TileSize>
++									<EdgeSize>
++										<AbsValue val="32"/>
++									</EdgeSize>
++								</Backdrop>
++								<Layers>
++									<Layer level="ARTWORK">
++										<FontString name="$parentTitle" inherits="GlueFontNormal" text="REGISTER_TITLE">
++											<Anchors>
++												<Anchor point="TOP" x="0" y="-26"/>
++											</Anchors>
++										</FontString>
++										<FontString name="RegisterDialogStatus" inherits="GlueFontHighlightSmall">
++											<Size x="320" y="32"/>
++											<Anchors>
++												<Anchor point="BOTTOM" x="0" y="54"/>
++											</Anchors>
++										</FontString>
++									</Layer>
++								</Layers>
++								<Frames>
++									<EditBox name="RegisterDialogUsername" inherits="RegisterEditTemplate">
++										<Anchors>
++											<Anchor point="TOP" x="0" y="-72"/>
++										</Anchors>
++									</EditBox>
++									<EditBox name="RegisterDialogPassword" inherits="RegisterEditTemplate" password="1">
++										<Anchors>
++											<Anchor point="TOP" relativeTo="RegisterDialogUsername" relativePoint="BOTTOM" x="0" y="-16"/>
++										</Anchors>
++									</EditBox>
++									<EditBox name="RegisterDialogConfirm" inherits="RegisterEditTemplate" password="1">
++										<Anchors>
++											<Anchor point="TOP" relativeTo="RegisterDialogPassword" relativePoint="BOTTOM" x="0" y="-16"/>
++										</Anchors>
++									</EditBox>
++									<Button name="$parentCreateButton" inherits="GlueButtonTemplateBlue" text="REGISTER_CREATE">
++										<Anchors>
++											<Anchor point="BOTTOMLEFT" x="20" y="16"/>
++										</Anchors>
++										<Scripts>
++											<OnClick>
++												RegisterDialog_Create();
++											</OnClick>
++										</Scripts>
++									</Button>
++									<Button name="$parentCancelButton" inherits="GlueButtonTemplateBlue" text="CANCEL">
++										<Anchors>
++											<Anchor point="LEFT" relativeTo="$parentCreateButton" relativePoint="RIGHT"/>
++										</Anchors>
++										<Scripts>
++											<OnClick>
++												PlaySound("gsLoginChangeRealmCancel");
++												RegisterDialog:Hide();
++											</OnClick>
++										</Scripts>
++									</Button>
++								</Frames>
++							</Frame>
++						</Frames>
++						<Scripts>
++							<OnLoad>
++								RegisterDialogUsernameLabel:SetText(ACCOUNT_NAME);
++								RegisterDialogPasswordLabel:SetText(PASSWORD);
++								RegisterDialogConfirmLabel:SetText(REGISTER_CONFIRM_PASSWORD);
++							</OnLoad>
++							<OnShow>
++								RegisterDialogUsername:SetText("");
++								RegisterDialogPassword:SetText("");
++								RegisterDialogConfirm:SetText("");
++								RegisterDialogStatus:SetText("");
++								RegisterDialogUsername:SetFocus();
++							</OnShow>
++							<OnHide>
++								AccountLoginAccountEdit:SetFocus();
++							</OnHide>
++						</Scripts>
++					</Frame>
+ 					<Frame name="TokenEnterDialog" toplevel="true" setAllPoints="true" hidden="true" enableMouse="true" enableKeyboard="true" frameStrata="DIALOG">
+ 						<Layers>
+ 							<Layer level="BACKGROUND">
 diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStrings.lua
 --- orig/Interface/GlueXML/GlueStrings.lua
 +++ work/Interface/GlueXML/GlueStrings.lua
@@ -100,11 +294,15 @@ diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStri
  ENTER_PIN_NUMBER = "Enter Your PIN";
  ENTER_WORLD = "Enter World";
  ENVIRONMENT_DETAIL = "Environment Detail";
-@@ -717,6 +717,7 @@
+@@ -717,6 +717,11 @@
  REALM_TYPE_TOURNAMENT_WARNING = "This account is currently not flagged to participate in the tournament realms.\n\nFor more information regarding the World of Warcraft Arena Tournament, please visit: www.worldofwarcraft.com.";
  REFRESH_RATE = "Refresh";
  REGEN = "REGEN %.0f";
 +REGISTER_ACCOUNT = "Register";
++REGISTER_CONFIRM_PASSWORD = "Confirm Password";
++REGISTER_CREATE = "Create";
++REGISTER_PASSWORDS_DIFFER = "The passwords do not match.";
++REGISTER_TITLE = "Create an Account";
  RELEASE_BUILD = "Release";
  RESET_SERVER_SETTINGS = "Are you sure you want to reset all user options to their defaults the next time you login?";
  RESET_SETTINGS = "Reset User Options";
