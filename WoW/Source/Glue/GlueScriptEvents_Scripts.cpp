@@ -38,6 +38,7 @@
 #include "WoW/Source/WowSvcs/WowSvcsClient/AccountData.h"
 #if defined(WOWDECOMP_PLATFORM_WEB)
 #include <cstdlib>
+#include <cstring>
 #include <emscripten.h>
 #endif
 
@@ -1608,15 +1609,14 @@ static int32_t Script_IsWebClient(lua_State* L) {
     return 1;
 }
 
-// POST /register next to the client's files (Tools/WebClient/serve.py). The glue thread is a worker, where a
-// synchronous request is allowed; it waits for the reply, a fraction of a second.
-EM_JS(char*, WebRegisterRequest, (const char* username, const char* password, int32_t* status), {
+// POST /guest next to the client's files (Tools/WebClient/serve.py): a new guest account, "USERNAME PASSWORD". The glue
+// thread is a worker, where a synchronous request is allowed; it waits for the reply, a fraction of a second.
+EM_JS(char*, WebGuestRequest, (int32_t* status), {
     var request = new XMLHttpRequest();
     var text;
     try {
-        request.open("POST", "register", false);
-        request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-        request.send("username=" + encodeURIComponent(UTF8ToString(username)) + "&password=" + encodeURIComponent(UTF8ToString(password)));
+        request.open("POST", "guest", false);
+        request.send();
         HEAP32[status >> 2] = request.status;
         text = request.responseText;
     } catch (e) {
@@ -1626,19 +1626,87 @@ EM_JS(char*, WebRegisterRequest, (const char* username, const char* password, in
     return stringToNewUTF8(text);
 });
 
-// wow335modding: status, message = WebRegisterAccount(username, password); status 200 means the account was created.
-static int32_t Script_WebRegisterAccount(lua_State* L) {
-    if (!lua_isstring(L, 1) || !lua_isstring(L, 2)) {
-        luaL_error(L, "Usage: WebRegisterAccount(\"username\", \"password\")");
+struct WebAccount {
+    char username[64];
+    char password[64];
+    char discord[256];
+};
+
+// The guest account the page keeps for this browser (Tools/WebClient/index.html wowAccount); false when there is none.
+// localStorage belongs to the page, so this asks its thread.
+static bool WebStoredAccount(WebAccount& account) {
+    char* text = reinterpret_cast<char*>(MAIN_THREAD_EM_ASM_PTR({ return stringToNewUTF8(Module.wowAccount()); }));
+    char* password = strchr(text, '\n');
+    char* discord = password ? strchr(password + 1, '\n') : nullptr;
+    if (discord) {
+        *password++ = '\0';
+        *discord++ = '\0';
+        SStrCopy(account.username, text, sizeof(account.username));
+        SStrCopy(account.password, password, sizeof(account.password));
+        SStrCopy(account.discord, discord, sizeof(account.discord));
+    }
+    free(text);
+    return discord != nullptr;
+}
+
+// wow335modding: username, password = WebGuestAccount(): the guest account this browser plays, created the first time;
+// nil and the reason when it cannot be created.
+static int32_t Script_WebGuestAccount(lua_State* L) {
+    WebAccount account;
+    if (!WebStoredAccount(account)) {
+        int32_t status = 0;
+        char* reply = WebGuestRequest(&status);
+        char* password = status == 200 ? strchr(reply, ' ') : nullptr;
+        if (!password) {
+            lua_pushnil(L);
+            lua_pushstring(L, reply);
+            free(reply);
+            return 2;
+        }
+        *password++ = '\0';
+        MAIN_THREAD_EM_ASM({ Module.wowSetAccount(UTF8ToString($0), UTF8ToString($1)); }, reply, password);
+        SStrCopy(account.username, reply, sizeof(account.username));
+        SStrCopy(account.password, password, sizeof(account.password));
+        free(reply);
+    }
+    lua_pushstring(L, account.username);
+    lua_pushstring(L, account.password);
+    return 2;
+}
+
+// wow335modding: WebDiscordState(): nil when this session is not the browser's guest account, false when that is not
+// saved with Discord, else the name of the Discord account it is saved with.
+static int32_t Script_WebDiscordState(lua_State* L) {
+    WebAccount account;
+    if (!WebStoredAccount(account) || strcmp(account.username, CGlueMgr::m_accountName)) {
+        lua_pushnil(L);
+    } else if (!account.discord[0]) {
+        lua_pushboolean(L, 0);
+    } else {
+        lua_pushstring(L, account.discord);
+    }
+    return 1;
+}
+
+// wow335modding: WebDiscord("signin" or "save"): the page goes to Discord (index.html wowDiscord), to sign in to the
+// account saved with it or to save this browser's guest account with it, and comes back.
+static int32_t Script_WebDiscord(lua_State* L) {
+    if (!lua_isstring(L, 1)) {
+        luaL_error(L, "Usage: WebDiscord(\"signin\" or \"save\")");
         return 0;
     }
 
-    int32_t status = 0;
-    char* message = WebRegisterRequest(lua_tolstring(L, 1, nullptr), lua_tolstring(L, 2, nullptr), &status);
-    lua_pushnumber(L, status);
-    lua_pushstring(L, message);
-    free(message);
-    return 2;
+    MAIN_THREAD_EM_ASM({ Module.wowDiscord(UTF8ToString($0)); }, lua_tolstring(L, 1, nullptr));
+    return 0;
+}
+
+// wow335modding: true only the first time after the page loads, so the login screen plays the guest account by itself
+// once; coming back to it later (logging out) it waits.
+static int32_t Script_WebAutoLogin(lua_State* L) {
+    static bool s_asked;
+    lua_pushboolean(L, !s_asked);
+    s_asked = true;
+    return 1;
 }
 #endif
 
@@ -1758,7 +1826,10 @@ static FrameScript_Method s_scriptFunctions[] = {
     { "IsSystemSupported", &Script_IsSystemSupported },
 #if defined(WOWDECOMP_PLATFORM_WEB)
     { "IsWebClient", &Script_IsWebClient },
-    { "WebRegisterAccount", &Script_WebRegisterAccount },
+    { "WebGuestAccount", &Script_WebGuestAccount },
+    { "WebDiscordState", &Script_WebDiscordState },
+    { "WebDiscord", &Script_WebDiscord },
+    { "WebAutoLogin", &Script_WebAutoLogin },
 #endif
 };
 

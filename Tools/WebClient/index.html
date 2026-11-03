@@ -90,6 +90,20 @@
     },
     // Frames from the render worker (Engine/Source/Gx/CGxDeviceWebGl/WebGl.js).
     wowPresent(frame) { view.transferFromImageBitmap(frame); status.hidden = true; },
+    // The guest account this browser plays (Glue/GlueScriptEvents_Scripts.cpp WebGuestAccount): its name, password
+    // and the Discord account it is saved with, from serve.py's /guest or its Discord pages. Clearing the site's data
+    // forgets it; that is what saving it with Discord is for.
+    wowAccount() {
+      try {
+        const account = JSON.parse(localStorage.getItem('wowAccount'));
+        return account ? [account.username, account.password, account.discord || ''].join('\n') : '';
+      } catch (error) {
+        return '';
+      }
+    },
+    wowSetAccount(username, password) {
+      try { localStorage.setItem('wowAccount', JSON.stringify({ username, password })); } catch (error) {}
+    },
     print: (text) => console.log(text),
     printErr: (text) => console.error(text),
     // WTF (settings, keybinds, macros, addon SavedVariables) lives in this browser's IndexedDB, loaded before main()
@@ -114,6 +128,22 @@
       // Quit (login screen) and Exit Game end the client (Web/WebMain.cpp). The settings it wrote on the way out are
       // saved, then the tab closes. Browsers only let a page close a tab that a script opened or that has a single
       // history entry, so otherwise the page says so instead.
+      // Sign in with Discord, or save this browser's guest account with it (WebDiscord): the page goes to Discord and
+      // serve.py brings it back here, after the settings are saved.
+      module.wowDiscord = async (action) => {
+        let url = 'auth/discord';
+        if (action === 'save') {
+          const [username, password] = module.wowAccount().split('\n');
+          const response = await fetch('auth/discord/link', { method: 'POST', body: new URLSearchParams({ username, password }) });
+          url = await response.text();
+          if (!response.ok) return alert(url);
+        }
+        clearInterval(timer);
+        await saving;
+        await save();
+        location.href = url;
+      };
+
       module.wowQuit = async () => {
         clearInterval(timer);
         await saving;

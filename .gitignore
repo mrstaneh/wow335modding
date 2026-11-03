@@ -417,3 +417,5 @@ CMakeSettings.json
 # local test login for the web client (Tools/WebClient)
 Tools/WebClient/test-account.txt
 Tools/WebClient/certs/
+# the Discord application's secret (Tools/WebClient/serve.py)
+Tools/WebClient/discord.json

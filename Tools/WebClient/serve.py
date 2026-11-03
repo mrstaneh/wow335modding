@@ -5,8 +5,13 @@
   Directories answer with an X-Wow-Directory header.
 - /ws/<host>/<port>: a WebSocket bridged to a TCP port on this machine (authserver 3724, worldserver 8085), so other
   machines' clients reach the servers here even though the realmlist says 127.0.0.1.
-- /register.html and POST /register: creates game accounts in the AzerothCore database (the login screen's Register
-  button), at most 3 per client address an hour.
+- POST /guest: a new guest account in the AzerothCore database (random name and password), which the page keeps in the
+  browser and logs in with; at most 10 per client address an hour.
+- Discord, when discord.json holds a Discord application's {"client_id": ..., "client_secret": ...} (its OAuth2
+  redirects: https://<your host>/auth/discord/callback, and http://localhost:<port>/auth/discord/callback to test):
+  POST /auth/discord/link saves the browser's guest account with a Discord account, GET /auth/discord signs another
+  browser in to the account saved with yours. The links are in the web_discord table, with the guest's generated
+  password so every browser signed in stays signed in.
 
 Usage: python serve.py [--port 8000] [--build ../../bin/Win] [--data ../../bin/Win/Data]
 On your local network (HTTPS required there): python serve.py --host 0.0.0.0 --cert certs/wow.pem --key certs/wow.key
@@ -15,8 +20,11 @@ Only do that on a network you trust: it serves your game data to every machine t
 import argparse
 import base64
 import hashlib
+import html
+import json
 import os
 import re
+import secrets
 import socket
 import ssl
 import struct
@@ -24,7 +32,8 @@ import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
+from urllib.request import Request, urlopen
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ALLOWED_PORTS = {3724, 8085}
@@ -37,12 +46,36 @@ SRP_G = 7
 # ponytail: new accounts per client address, in memory; a restart forgets them.
 REGISTERED = {}
 REGISTER_LOCK = threading.Lock()
+# Guest accounts: GUEST and 11 letters and digits, a 16-character password of the same.
+GUEST_NAME = re.compile(r'GUEST[A-Z0-9]{11}')
+ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+DISCORD_TABLE = ('CREATE TABLE IF NOT EXISTS web_discord (discord_id BIGINT UNSIGNED PRIMARY KEY, '
+                 'account_id INT UNSIGNED NOT NULL UNIQUE, password VARCHAR(16) NOT NULL);\n')
+# Discord sign-ins under way: state -> (expiry, redirect URI, (guest name, password) to save, or None to sign in).
+# ponytail: in memory; a restart drops sign-ins in progress, which then just start over.
+DISCORD_STATES = {}
 
 
 def srp_verifier(username, password, salt):
     """The verifier AzerothCore stores for this upper-case username and password, little-endian like the database."""
     x = int.from_bytes(hashlib.sha1(salt + hashlib.sha1(f'{username}:{password}'.encode()).digest()).digest(), 'little')
     return pow(SRP_G, x, SRP_N).to_bytes(32, 'little')
+
+
+def sql(query):
+    """The rows of the last statement as lists of strings; raises OSError when the database is unreachable or fails.
+    Callers only put [A-Z0-9], digits and hex inside queries."""
+    try:
+        done = subprocess.run(MYSQL, input=query, capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired as error:
+        raise OSError('the database timed out') from error
+    if done.returncode:
+        raise OSError(done.stderr.strip())
+    return [line.split('\t') for line in done.stdout.splitlines()]
+
+
+def random_text(length):
+    return ''.join(secrets.choice(ALPHABET) for _ in range(length))
 
 
 def create_account(username, password):
@@ -58,11 +91,92 @@ def create_account(username, password):
     except (OSError, subprocess.TimeoutExpired):
         return 503, 'The account database is not reachable right now.'
     if done.returncode == 0:
-        return 200, f'Account {username} created. Go back to the game and log in.'
+        return 200, f'Account {username} created.'
     if 'Duplicate entry' in done.stderr:
         return 409, 'That username is taken.'
     print('register failed:', done.stderr.strip())
     return 500, 'Creating the account failed.'
+
+
+def guest_password_ok(username, password):
+    """Whether this is a guest account and its password."""
+    if not GUEST_NAME.fullmatch(username) or not re.fullmatch(r'[A-Z0-9]{16}', password):
+        return False
+    rows = sql(f"SELECT HEX(salt), HEX(verifier) FROM account WHERE username = '{username}';")
+    return bool(rows) and srp_verifier(username, password, bytes.fromhex(rows[0][0])).hex().upper() == rows[0][1]
+
+
+def discord_account(discord_id):
+    """(username, password) of the guest account saved with this Discord account, or None."""
+    rows = sql(DISCORD_TABLE + f'SELECT account.username, web_discord.password FROM web_discord '
+               f'JOIN account ON account.id = web_discord.account_id WHERE discord_id = {discord_id};')
+    return tuple(rows[0]) if rows else None
+
+
+def discord_config():
+    try:
+        with open(os.path.join(HERE, 'discord.json')) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def discord_user(config, code, redirect_uri):
+    """(id, name) of the Discord account that signed in with this code."""
+    agent = {'User-Agent': 'wow335modding-webclient (serve.py)'}  # Discord refuses Python's default agent
+    form = urlencode({'client_id': config['client_id'], 'client_secret': config['client_secret'],
+                      'grant_type': 'authorization_code', 'code': code, 'redirect_uri': redirect_uri}).encode()
+    request = Request('https://discord.com/api/oauth2/token', form, {**agent, 'Content-Type': 'application/x-www-form-urlencoded'})
+    with urlopen(request, timeout=10) as response:
+        token = json.load(response)['access_token']
+    with urlopen(Request('https://discord.com/api/users/@me', headers={**agent, 'Authorization': f'Bearer {token}'}), timeout=10) as response:
+        user = json.load(response)
+    return str(user['id']), user.get('global_name') or user['username']
+
+
+# Where the Discord pages send the browser: the account to keep (JSON), and whether to ask first. The page asks anyway
+# when keeping it would drop a guest account that is not saved with Discord.
+ACCOUNT_PAGE = '''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WoW Web Client</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #e8dcc0; font: 16px system-ui, sans-serif; }
+  main { display: grid; place-content: center; gap: 16px; height: 100%; max-width: 520px; margin: 0 auto; padding: 0 16px; text-align: center; }
+  main[hidden] { display: none; }
+  div { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  button { padding: 10px 22px; border: 0; border-radius: 6px; background: #8a1c12; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button.quiet { background: #3a3328; }
+</style></head>
+<body><main hidden><p>{{MESSAGE}}</p><div></div></main>
+<script>
+  const account = {{ACCOUNT}};
+  const ask = {{ASK}};
+  const main = document.querySelector('main');
+  const back = () => location.replace('/');
+  const button = (label, quiet, onclick) => {
+    const element = document.createElement('button');
+    element.textContent = label;
+    element.className = quiet ? 'quiet' : '';
+    element.onclick = onclick;
+    main.querySelector('div').append(element);
+  };
+  const use = () => {
+    try { localStorage.setItem('wowAccount', JSON.stringify(account)); } catch (error) {}
+    back();
+  };
+  let current = null;
+  try { current = JSON.parse(localStorage.getItem('wowAccount')); } catch (error) {}
+  const dropsGuest = account && current && !current.discord && current.username !== account.username;
+  if (account && !ask && !dropsGuest) {
+    use();
+  } else {
+    if (dropsGuest && !ask) main.querySelector('p').textContent = 'This browser plays a guest account that is not saved with Discord. Signing in replaces it, and it will be lost.';
+    if (account) button('Play that account', false, use);
+    button(account ? "Keep this browser's account" : 'Back to the game', !!account, back);
+    main.hidden = false;
+  }
+</script></body></html>
+'''
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -83,8 +197,6 @@ class Handler(BaseHTTPRequestHandler):
             root, rest = self.server.data, path[len('/data'):]
         elif path in ('/', '/index.html'):
             return os.path.join(HERE, 'index.html')
-        elif path == '/register.html':
-            return os.path.join(HERE, 'register.html')
         else:
             root, rest = self.server.build, path
         full = os.path.realpath(os.path.join(root, rest.lstrip('/')))
@@ -98,29 +210,121 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/ws/'):
             return self.websocket()
+        path = self.path.split('?')[0]
+        if path == '/auth/discord':
+            return self.discord_start(None)
+        if path == '/auth/discord/callback':
+            return self.discord_callback()
         self.serve(True)
 
     def do_POST(self):
-        if self.path != '/register':
-            return self.reply(404, '')
         form = parse_qs(self.rfile.read(min(int(self.headers.get('Content-Length', 0)), 1024)).decode(errors='replace'))
-        username = form.get('username', [''])[0].upper()
-        password = form.get('password', [''])[0].upper()  # the client upper-cases passwords before hashing
-        if not re.fullmatch(r'[A-Z0-9]{3,16}', username) or not re.fullmatch(r'[ -~]{4,16}', password):
-            return self.reply(400, 'Use 3 to 16 letters and digits for the username and 4 to 16 plain characters for the password.')
-        # Behind a reverse proxy every request comes from this machine; the proxy names the real client.
+        if self.path == '/guest':
+            return self.guest()
+        if self.path == '/auth/discord/link':
+            guest = (form.get('username', [''])[0], form.get('password', [''])[0])
+            try:
+                if not guest_password_ok(*guest):
+                    return self.reply(403, 'Only the guest account this browser plays can be saved with Discord.')
+            except OSError as error:
+                print('discord save failed:', error)
+                return self.reply(503, 'The account database is not reachable right now.')
+            return self.discord_start(guest)
+        self.reply(404, '')
+
+    def client(self):
+        """The client's address. Behind a reverse proxy every request comes from this machine; the proxy names it."""
         client = self.client_address[0]
         if client in ('127.0.0.1', '::1') and self.headers.get('X-Forwarded-For'):
             client = self.headers['X-Forwarded-For'].split(',')[0].strip()
+        return client
+
+    def guest(self):
+        """A new guest account, as 'USERNAME PASSWORD'."""
+        client = self.client()
         with REGISTER_LOCK:
             now = time.time()
             recent = [t for t in REGISTERED.get(client, []) if now - t < 3600]
-            if len(recent) >= 3:
+            if len(recent) >= 10:
                 return self.reply(429, 'Too many new accounts from your address; try again in an hour.')
+            username, password = 'GUEST' + random_text(11), random_text(16)
             status, message = create_account(username, password)
             if status == 200:
                 REGISTERED[client] = recent + [now]
+                message = f'{username} {password}'
         self.reply(status, message)
+
+    def discord_start(self, guest):
+        """Off to Discord: a redirect when the page navigates here to sign in, the address as text to save a guest."""
+        config = discord_config()
+        if not config:
+            message = 'Discord sign-in is not set up on this server.'
+            return self.reply(503, message) if guest else self.account_page(message)
+        # Discord only sends people back to the addresses registered with the application.
+        host = self.headers.get('X-Forwarded-Host') or self.headers.get('X-Original-Host') or self.headers.get('Host', '')
+        scheme = 'http' if re.match(r'(localhost|127\.0\.0\.1)(:|$)', host) else 'https'
+        redirect_uri = f'{scheme}://{host}/auth/discord/callback'
+        state = secrets.token_urlsafe(24)
+        now = time.time()
+        for old in [key for key, value in list(DISCORD_STATES.items()) if value[0] < now]:
+            DISCORD_STATES.pop(old, None)
+        DISCORD_STATES[state] = (now + 600, redirect_uri, guest)
+        url = 'https://discord.com/oauth2/authorize?' + urlencode({
+            'client_id': config['client_id'], 'response_type': 'code', 'redirect_uri': redirect_uri,
+            'scope': 'identify', 'state': state, 'prompt': 'none'})
+        if guest:
+            return self.reply(200, url)
+        self.send_response(302)
+        self.send_header('Location', url)
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
+    def discord_callback(self):
+        query = parse_qs(self.path.partition('?')[2])
+        entry = DISCORD_STATES.pop(query.get('state', [''])[0], None)
+        if not entry or entry[0] < time.time():
+            return self.account_page('That Discord sign-in expired. Try again from the game.')
+        if 'code' not in query:
+            return self.account_page('Discord sign-in was cancelled.')
+        _, redirect_uri, guest = entry
+        try:
+            discord_id, name = discord_user(discord_config(), query['code'][0], redirect_uri)
+            if not discord_id.isdigit():
+                raise ValueError(discord_id)
+            saved = discord_account(discord_id)
+            if guest is None:
+                if not saved:
+                    return self.account_page('No game account is saved with this Discord account yet. Play, then use '
+                                             '"Save with Discord" on the character screen.')
+                return self.account_page(None, (*saved, name))
+            if saved and saved[0] != guest[0]:
+                return self.account_page('This Discord account already has a game account saved with it. Play that one '
+                                         'instead? The guest account on this browser is not saved anywhere, so it '
+                                         'would be lost.', (*saved, name))
+            if not saved:
+                rows = sql(DISCORD_TABLE + f"INSERT IGNORE INTO web_discord (discord_id, account_id, password) "
+                           f"SELECT {discord_id}, id, '{guest[1]}' FROM account WHERE username = '{guest[0]}';\n"
+                           "SELECT ROW_COUNT();")
+                if rows != [['1']]:
+                    return self.account_page('This game account is already saved with a different Discord account.')
+            return self.account_page(None, (*guest, name))
+        except (OSError, ValueError, KeyError) as error:
+            print('discord sign-in failed:', error)
+            return self.account_page('Signing in with Discord failed. Try again in a moment.')
+
+    def account_page(self, message, account=None):
+        """The page that keeps account (username, password, Discord name) in this browser and goes back to the game;
+        with a message it shows that first."""
+        data = json.dumps({'username': account[0], 'password': account[1], 'discord': account[2]} if account else None)
+        # the account last: the Discord name is the one value from outside
+        body = (ACCOUNT_PAGE.replace('{{MESSAGE}}', html.escape(message or ''))
+                .replace('{{ASK}}', 'true' if message else 'false')
+                .replace('{{ACCOUNT}}', data.replace('<', '\\u003c'))).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def reply(self, status, text):
         body = text.encode()
