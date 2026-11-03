@@ -1,9 +1,12 @@
 // wow335modding: browser build of Os/Win64/Input.cpp. Page events (keyboard on the window; mouse and wheel on the
 // canvas; focus, close) are handled on the page's main thread and pushed into the same OSEVENT queue the
 // Windows window procedure fills, with the same parameters, so the client on its worker thread sees no difference.
-// Relative mouse mode (camera turning) is a pointer lock.
+// The first click captures the pointer (a pointer lock) and keeps it, so the browser shows its "press Esc" notice once
+// rather than at every camera turn. While captured the client's cursor (it draws its own) moves by the pointer's
+// movement, and relative mode (camera turning) passes that movement on instead. Esc or leaving the tab frees it.
 #if defined(WOWDECOMP_PLATFORM_WEB)
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -26,6 +29,7 @@ uint32_t s_mouseButtons;
 int32_t s_mouseX;
 int32_t s_mouseY;
 OS_MOUSE_MODE s_mouseMode = OS_MOUSE_MODE_NORMAL;
+bool s_captured;
 float s_mouseSpeed = 1.0f;
 
 struct Lock {
@@ -171,6 +175,14 @@ EM_BOOL OnMouse(int eventType, const EmscriptenMouseEvent* event, void*) {
     if (eventType == EMSCRIPTEN_EVENT_MOUSEMOVE) {
         if (s_mouseMode == OS_MOUSE_MODE_RELATIVE) {
             Put(OS_INPUT_MOUSE_MOVE_RELATIVE, 0, static_cast<int32_t>(event->movementX * s_mouseSpeed), static_cast<int32_t>(event->movementY * s_mouseSpeed));
+        } else if (s_captured) {
+            double scale = CanvasScale();
+            int width = 0;
+            int height = 0;
+            emscripten_get_canvas_element_size(CANVAS, &width, &height);
+            s_mouseX = std::clamp(s_mouseX + static_cast<int32_t>(event->movementX * scale), 0, width - 1);
+            s_mouseY = std::clamp(s_mouseY + static_cast<int32_t>(event->movementY * scale), 0, height - 1);
+            Put(OS_INPUT_MOUSE_MOVE, 0, s_mouseX, s_mouseY);
         } else {
             double scale = CanvasScale();
             s_mouseX = static_cast<int32_t>(event->targetX * scale);
@@ -186,6 +198,9 @@ EM_BOOL OnMouse(int eventType, const EmscriptenMouseEvent* event, void*) {
     }
 
     if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN) {
+        if (!s_captured) {
+            emscripten_request_pointerlock(CANVAS, true);
+        }
         s_mouseButtons |= button;
         Put(OS_INPUT_MOUSE_DOWN, button, s_mouseX, s_mouseY);
     } else {
@@ -218,6 +233,12 @@ const char* OnBeforeUnload(int, const void*, void*) {
     Lock lock;
     Put(OS_INPUT_CLOSE, 0, 0, 0);
     return nullptr;
+}
+
+EM_BOOL OnPointerLockChange(int, const EmscriptenPointerlockChangeEvent* event, void*) {
+    Lock lock;
+    s_captured = event->isActive;
+    return EM_FALSE;
 }
 
 EM_BOOL OnContextMenu(int, const EmscriptenMouseEvent*, void*) {
@@ -259,6 +280,7 @@ void OsInputInitialize() {
     emscripten_set_blur_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, OnFocus, main);
     emscripten_set_beforeunload_callback_on_thread(nullptr, OnBeforeUnload, main);
     emscripten_set_contextmenu_callback_on_thread(CANVAS, nullptr, true, OnContextMenu, main);
+    emscripten_set_pointerlockchange_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, true, OnPointerLockChange, main);
 }
 
 void OsInputDestroy() {
@@ -280,20 +302,11 @@ int32_t OsInputIsMouseButtonDown(MOUSEBUTTON button) {
     return (s_mouseButtons & button) != 0;
 }
 
+// Any click captures the pointer (OnMouse), so a camera turn only changes what its movement does. Uncaptured (the
+// browser refused, or right after Esc) the turn still works from the plain movement, until the screen edge.
 void OsInputSetMouseMode(OS_MOUSE_MODE mode) {
-    {
-        Lock lock;
-        if (mode == s_mouseMode) {
-            return;
-        }
-        s_mouseMode = mode;
-    }
-
-    if (mode == OS_MOUSE_MODE_RELATIVE) {
-        emscripten_request_pointerlock(CANVAS, true); // deferred to the next input event if needed (a user gesture)
-    } else {
-        emscripten_exit_pointerlock();
-    }
+    Lock lock;
+    s_mouseMode = mode;
 }
 
 void OsInputSetMouseSpeed(float speed) {
