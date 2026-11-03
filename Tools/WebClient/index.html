@@ -29,9 +29,9 @@
   const canvas = document.getElementById('canvas');
   const status = document.getElementById('status');
   const view = canvas.getContext('bitmaprenderer', { alpha: false });
-  // The game renders at the display's resolution: CSS size times devicePixelRatio (Windows display scaling, browser
-  // zoom). Os/Web/Input.cpp maps mouse positions by the same ratio. ?lowres renders at CSS pixels instead (at 150%
-  // scaling less than half the pixels), for slower GPUs.
+  // The game renders at the display's resolution: one canvas pixel per screen pixel (Windows display scaling, browser
+  // zoom). Os/Web/Input.cpp maps mouse positions by the canvas's own ratio. ?lowres renders at CSS pixels instead (at
+  // 150% scaling less than half the pixels), for slower GPUs.
   const lowres = new URLSearchParams(location.search).has('lowres');
   function fit() {
     const ratio = lowres ? 1 : devicePixelRatio;
@@ -39,7 +39,15 @@
     canvas.height = Math.round(canvas.clientHeight * ratio);
   }
   fit();
-  window.addEventListener('resize', fit);
+  // CSS size times devicePixelRatio, rounded, is often a pixel off the screen pixels the canvas really covers, and then
+  // the browser resamples every frame by a hair, smearing one-pixel strokes of text. The observer reports the exact
+  // count where the browser knows it (Chrome, Firefox).
+  new ResizeObserver(([entry]) => {
+    const box = !lowres && entry.devicePixelContentBoxSize && entry.devicePixelContentBoxSize[0];
+    if (!box) return fit();
+    canvas.width = box.inlineSize;
+    canvas.height = box.blockSize;
+  }).observe(canvas);
 
   var Module = {
     canvas,
