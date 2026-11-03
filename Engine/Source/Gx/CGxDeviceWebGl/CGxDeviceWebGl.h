@@ -125,4 +125,9 @@ class CGxDeviceWebGl : public CGxDevice {
 
 CGxDevice* CreateCGxDeviceWebGl();
 
+// wow335modding: the display's refresh rate in Hz as the page measures it, and the rates the video options offer
+// (CGxDevice/Web/CGxDevice.cpp): the usual ones, and the display's own. The chosen one (gxRefresh) caps the frame rate.
+uint32_t WebDisplayRefreshRate();
+uint32_t WebRefreshRates(uint32_t displayRate, uint32_t (&rates)[16]);
+
 #endif

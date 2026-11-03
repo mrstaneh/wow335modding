@@ -37,13 +37,26 @@ int32_t CGxDevice::AdapterDesktopMode(CGxMonitorMode& mode) {
     mode.m_size.x = width > 0 ? width : 1024;
     mode.m_size.y = height > 0 ? height : 768;
     mode.m_bpp = 32;
-    mode.m_refreshRate = 60;
+    mode.m_refreshRate = WebDisplayRefreshRate();
     return 1;
 }
 
+// The canvas size at each rate the video options offer; the chosen one caps the frame rate (CGxDeviceWebGl).
 int32_t CGxDevice::AdapterMonitorModes(TSGrowableArray<CGxMonitorMode>& modes) {
+    CGxMonitorMode desktop;
+    CGxDevice::AdapterDesktopMode(desktop);
+
+    uint32_t rates[16];
+    uint32_t count = WebRefreshRates(desktop.m_refreshRate, rates);
     modes.SetCount(0);
-    return CGxDevice::AdapterDesktopMode(*modes.New());
+
+    for (uint32_t i = 0; i < count; i++) {
+        CGxMonitorMode* mode = modes.New();
+        *mode = desktop;
+        mode->m_refreshRate = rates[i];
+    }
+
+    return 1;
 }
 
 int32_t CGxDevice::DeviceAdapterID(uint16_t& vendorID, uint16_t& deviceID, uint32_t& driverVersionHi, uint32_t& driverVersionLo) {

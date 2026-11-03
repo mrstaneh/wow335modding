@@ -14,6 +14,7 @@
 #include <GLES3/gl3.h>
 #include "Engine/Source/Gx/CGxDeviceWebGl/CGxDeviceWebGl.h"
 #include "Engine/Source/BlizzardCore/Source/System/File/Web/WebFile.h"
+#include "Engine/Source/ConsoleBase/ConsoleVar.h"
 #include "Engine/Source/Gx/CGxBuf.h"
 #include "Engine/Source/Gx/CGxPool.h"
 #include "Engine/Source/Gx/CGxTex.h"
@@ -330,6 +331,36 @@ static void TransformRow(const C44Matrix& m, const float* p, float* out) {
     for (uint32_t i = 0; i < 4; i++) {
         out[i] = p[0] * e[i] + p[1] * e[4 + i] + p[2] * e[8 + i] + p[3] * e[12 + i];
     }
+}
+
+// The display's frame time in ms, measured by the page (index.html wowFrameMs); 60 Hz until it knows. A blocking call
+// to the page's thread.
+static double PageFrameMs() {
+    return MAIN_THREAD_EM_ASM_DOUBLE({ return Module.wowFrameMs ? Module.wowFrameMs() : 1000 / 60; });
+}
+
+uint32_t WebDisplayRefreshRate() {
+    return static_cast<uint32_t>(1000.0 / PageFrameMs() + 0.5);
+}
+
+// Always the usual rates, not only those up to the display's: the client checks a saved rate against this list at
+// startup, before the page may have measured the display, and a rate above the display's just runs at the display's.
+// Not 75: that is gxRefresh's default, which should mean "the display's rate" (a 75 Hz display still offers it).
+uint32_t WebRefreshRates(uint32_t displayRate, uint32_t (&rates)[16]) {
+    static const uint32_t s_rates[] = { 30, 60, 90, 100, 120, 144, 165, 240 };
+    uint32_t count = 0;
+    bool listed = false;
+
+    for (uint32_t rate : s_rates) {
+        rates[count++] = rate;
+        listed = listed || rate == displayRate;
+    }
+
+    if (!listed) {
+        rates[count++] = displayRate;
+    }
+
+    return count;
 }
 
 static void CanvasSize(int32_t& width, int32_t& height) {
@@ -750,12 +781,33 @@ void CGxDeviceWebGl::ScenePresent() {
     int32_t height = 0;
     const CRect& window = this->DeviceDefWindow();
 
-    // The display's frame time, measured by the page (index.html wowFrameMs); 60 Hz until it knows.
-    static double s_displayFrameMs = 1000.0 / 60.0;
+    // The time per frame: the display's refresh period, or longer when the video options chose a lower rate
+    // (gxRefresh; WebRefreshRates). A rate not on that list, like the default 75, means the display's own. Read from
+    // the cvar, its pending (latched) value first, not the device format: a page has no display mode to switch, so the
+    // choice applies at once instead of after a gxRestart.
+    static double s_frameMs = 1000.0 / 60.0;
 
     if (this->m_frameCount % 30 == 0) {
         CanvasSize(width, height);
-        s_displayFrameMs = MAIN_THREAD_EM_ASM_DOUBLE({ return Module.wowFrameMs ? Module.wowFrameMs() : 1000 / 60; });
+
+        // Settings reach Config.wtf only on a clean exit, and a page is mostly closed or reloaded instead: write changed
+        // ones every few seconds (SaveAll does nothing when none changed); index.html keeps WTF in IndexedDB.
+        if (this->m_frameCount % 300 == 0) {
+            CVar::SaveAll();
+        }
+
+        static CVar* gxRefresh = CVar::Lookup("gxRefresh");
+        double displayMs = PageFrameMs();
+        int32_t chosen = !gxRefresh ? 0 : gxRefresh->m_latchedValue.m_str ? SStrToInt(gxRefresh->m_latchedValue.m_str) : gxRefresh->m_intValue;
+        uint32_t rates[16];
+        uint32_t count = WebRefreshRates(static_cast<uint32_t>(1000.0 / displayMs + 0.5), rates);
+        s_frameMs = displayMs;
+
+        for (uint32_t i = 0; i < count; i++) {
+            if (static_cast<int32_t>(rates[i]) == chosen && 1000.0 / rates[i] > displayMs) {
+                s_frameMs = 1000.0 / rates[i];
+            }
+        }
     }
 
     if (width && (width != static_cast<int32_t>(window.maxX) || height != static_cast<int32_t>(window.maxY))) {
@@ -787,7 +839,7 @@ void CGxDeviceWebGl::ScenePresent() {
     emscripten_sleep(s_nextPresent > now ? static_cast<uint32_t>(s_nextPresent - now) : 0);
 
     now = emscripten_get_now();
-    s_nextPresent = s_nextPresent + s_displayFrameMs > now ? s_nextPresent + s_displayFrameMs : now + s_displayFrameMs;
+    s_nextPresent = s_nextPresent + s_frameMs > now ? s_nextPresent + s_frameMs : now + s_frameMs;
     this->ShaderConstantsClear();
 }
 

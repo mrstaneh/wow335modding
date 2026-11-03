@@ -244,7 +244,15 @@ refresh:
     for (uint32_t i = 0; i < s_gxMonitorModes.Count(); i++) {
         CGxMonitorMode& mode = s_gxMonitorModes[i];
 
-        if (format.m_size.x == mode.m_size.x && format.m_size.y == mode.m_size.y && bpp == mode.m_bpp) {
+#if defined(WOWDECOMP_PLATFORM_WEB)
+        // wow335modding: a page's monitor modes are its refresh rates at the canvas size, which a windowed format (its
+        // gxResolution) seldom matches; without this every saved rate fell back to the lowest and was written back.
+        bool sizeMatches = true;
+#else
+        bool sizeMatches = format.m_size.x == mode.m_size.x && format.m_size.y == mode.m_size.y;
+#endif
+
+        if (sizeMatches && bpp == mode.m_bpp) {
             if (mode.m_refreshRate < minRefresh) {
                 minRefresh = mode.m_refreshRate;
             }
