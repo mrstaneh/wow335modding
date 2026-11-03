@@ -8,6 +8,8 @@
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   #canvas { display: block; width: 100vw; height: 100vh; cursor: none; outline: none; }
   #status { position: fixed; left: 16px; bottom: 12px; color: #c8b27a; font: 13px system-ui, sans-serif; }
+  #closed { display: grid; place-content: center; gap: 16px; height: 100%; padding: 0 16px; text-align: center; color: #e8dcc0; font: 16px system-ui, sans-serif; }
+  #closed button { justify-self: center; padding: 10px 22px; border: 0; border-radius: 6px; background: #8a1c12; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -58,20 +60,33 @@
     // WTF (settings, keybinds, macros, addon SavedVariables) lives in this browser's IndexedDB, loaded before main()
     // and saved every few seconds and when the page is hidden. The client rewrites whole files, so only what changed
     // since the last save can be lost.
-    preRun: [({ FS, IDBFS, addRunDependency, removeRunDependency }) => {
+    preRun: [(module) => {
+      const { FS, IDBFS, addRunDependency, removeRunDependency } = module;
       FS.mkdir('/wow');
       FS.mkdir('/wow/WTF');
       FS.mount(IDBFS, {}, '/wow/WTF');
       addRunDependency('wtf');
       FS.syncfs(true, (err) => { if (err) console.error('Loading saved settings failed:', err); removeRunDependency('wtf'); });
-      let saving = false;
-      const save = () => {
-        if (saving) return;
-        saving = true;
-        FS.syncfs(false, (err) => { saving = false; if (err) console.error('Saving settings failed:', err); });
-      };
-      setInterval(save, 5000);
+      let saving = null;
+      const save = () => saving || (saving = new Promise((resolve) => FS.syncfs(false, (err) => {
+        saving = null;
+        if (err) console.error('Saving settings failed:', err);
+        resolve();
+      })));
+      const timer = setInterval(save, 5000);
       document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+
+      // Quit (login screen) and Exit Game end the client (Web/WebMain.cpp). The settings it wrote on the way out are
+      // saved, then the tab closes. Browsers only let a page close a tab that a script opened or that has a single
+      // history entry, so otherwise the page says so instead.
+      module.wowQuit = async () => {
+        clearInterval(timer);
+        await saving;
+        await save();
+        window.close();
+        document.body.innerHTML = '<main id="closed"><p>You have left the game. You can close this tab.</p>'
+          + '<button onclick="location.reload()">Play again</button></main>';
+      };
     }],
   };
   if (!crossOriginIsolated) status.textContent = 'Needs cross-origin isolation: open this page through Tools/WebClient/serve.py.';

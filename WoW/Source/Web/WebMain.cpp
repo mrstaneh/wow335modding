@@ -4,6 +4,7 @@
 #if defined(WOWDECOMP_PLATFORM_WEB)
 
 #include <cstdio>
+#include <emscripten.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "Engine/Source/Storm/H/storm.h"
@@ -30,7 +31,11 @@ int main() {
     }
 
     StormRtlInitialize();
-    return CommonMain();
+    int32_t result = CommonMain();
+
+    // Quit or Exit Game: the page saves the settings the client just wrote and closes the tab (index.html wowQuit).
+    MAIN_THREAD_EM_ASM({ if (Module.wowQuit) Module.wowQuit(); });
+    return result;
 }
 
 #endif
