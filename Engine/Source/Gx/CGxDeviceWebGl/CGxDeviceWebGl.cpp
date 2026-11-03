@@ -19,6 +19,7 @@
 #include "Engine/Source/Gx/CGxTex.h"
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Os/Gui.h"
+#include "Engine/Source/Os/Input.h"
 #include "Engine/Source/Os/Time.h"
 #include "Engine/Source/Storm/H/storm.h"
 
@@ -762,6 +763,10 @@ void CGxDeviceWebGl::ScenePresent() {
         rect.maxY = static_cast<float>(height);
         rect.maxX = static_cast<float>(width);
         this->DeviceWM(GxWM_Size, reinterpret_cast<uintptr_t>(&rect), 0);
+
+        // The size event goes out only now that the device reports the new size: its handlers ask the device
+        // (fonts are rasterized for CapsWindowSize, GxuFontWindowSizeChanged), as on Windows, where both change together.
+        OsQueuePut(OS_INPUT_SIZE, width, height, 0, 0);
     }
 
     this->WaitForFPSCap();

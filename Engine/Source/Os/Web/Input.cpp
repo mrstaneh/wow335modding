@@ -1,5 +1,5 @@
 // wow335modding: browser build of Os/Win64/Input.cpp. Page events (keyboard on the window; mouse and wheel on the
-// canvas; focus, resize, close) are handled on the page's main thread and pushed into the same OSEVENT queue the
+// canvas; focus, close) are handled on the page's main thread and pushed into the same OSEVENT queue the
 // Windows window procedure fills, with the same parameters, so the client on its worker thread sees no difference.
 // Relative mouse mode (camera turning) is a pointer lock.
 #if defined(WOWDECOMP_PLATFORM_WEB)
@@ -214,16 +214,6 @@ EM_BOOL OnFocus(int eventType, const EmscriptenFocusEvent*, void*) {
     return EM_FALSE;
 }
 
-// The page's own resize handler, registered before this one, has already resized the canvas.
-EM_BOOL OnResize(int, const EmscriptenUiEvent*, void*) {
-    int width = 0;
-    int height = 0;
-    emscripten_get_canvas_element_size(CANVAS, &width, &height);
-    Lock lock;
-    Put(OS_INPUT_SIZE, width, height, 0);
-    return EM_FALSE;
-}
-
 const char* OnBeforeUnload(int, const void*, void*) {
     Lock lock;
     Put(OS_INPUT_CLOSE, 0, 0, 0);
@@ -267,7 +257,6 @@ void OsInputInitialize() {
     emscripten_set_wheel_callback_on_thread(CANVAS, nullptr, true, OnWheel, main);
     emscripten_set_focus_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, OnFocus, main);
     emscripten_set_blur_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, OnFocus, main);
-    emscripten_set_resize_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, OnResize, main);
     emscripten_set_beforeunload_callback_on_thread(nullptr, OnBeforeUnload, main);
     emscripten_set_contextmenu_callback_on_thread(CANVAS, nullptr, true, OnContextMenu, main);
 }
