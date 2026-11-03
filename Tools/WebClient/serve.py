@@ -7,8 +7,8 @@
   machines' clients reach the servers here even though the realmlist says 127.0.0.1.
 - POST /guest: a new guest account in the AzerothCore database (random name and password), which the page keeps in the
   browser and logs in with; at most 10 per client address an hour.
-- Discord, when discord.json holds a Discord application's {"client_id": ..., "client_secret": ...} (its OAuth2
-  redirects: https://<your host>/auth/discord/callback, and http://localhost:<port>/auth/discord/callback to test):
+- Discord, when discord.json holds a Discord application's {"client_id": ..., "client_secret": ..., "redirect_uri":
+  "https://<your host>/auth/discord/callback"} (that address also in the application's OAuth2 redirects):
   POST /auth/discord/link saves the browser's guest account with a Discord account, GET /auth/discord signs another
   browser in to the account saved with yours. The links are in the web_discord table, with the guest's generated
   password so every browser signed in stays signed in.
@@ -260,10 +260,8 @@ class Handler(BaseHTTPRequestHandler):
         if not config:
             message = 'Discord sign-in is not set up on this server.'
             return self.reply(503, message) if guest else self.account_page(message)
-        # Discord only sends people back to the addresses registered with the application.
-        host = self.headers.get('X-Forwarded-Host') or self.headers.get('X-Original-Host') or self.headers.get('Host', '')
-        scheme = 'http' if re.match(r'(localhost|127\.0\.0\.1)(:|$)', host) else 'https'
-        redirect_uri = f'{scheme}://{host}/auth/discord/callback'
+        # From discord.json: behind a reverse proxy this server cannot tell its public address.
+        redirect_uri = config['redirect_uri']
         state = secrets.token_urlsafe(24)
         now = time.time()
         for old in [key for key, value in list(DISCORD_STATES.items()) if value[0] < now]:
