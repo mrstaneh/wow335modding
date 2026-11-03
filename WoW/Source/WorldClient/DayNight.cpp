@@ -64,6 +64,14 @@ static CVar* s_cvSkyCloudLOD;
 // wow335modding: not in the original client. Darker nights, 0 = Blizzard's lighting, 1 = black at midnight.
 static CVar* s_cvNightDarkness;
 
+// wow335modding: not in the original client. skyClouds 0 hides the clouds (no texture animation, no cloud shadows).
+// Off in the browser build, where the cloud texture looks grainy.
+static bool SkyCloudsCallback(CVar* var, const char* oldValue, const char* value, void* arg) {
+    DayNight::g_clouds.m_enabled = SStrToInt(value) != 0;
+    DayNight::g_clouds.m_fullUpdate = 1;
+    return true;
+}
+
 // wow335modding: 1 by day, down to 1 - nightDarkness at night, fading over dusk (20:00-22:00) and dawn (04:00-06:00).
 static float NightBrightness(float dayProgression) {
     float minutes = dayProgression * 1440.0f;
@@ -2592,6 +2600,12 @@ void DayNight::LoadMap(int32_t mapId) {
     DayNight::s_lightFlags = 0;
     s_cvSkyCloudLOD = CVar::Register("SkyCloudLOD", nullptr, 0, "0", CWorldParam::CloudLODCallback, 1, false, nullptr, false);
     // wow335modding: saved to Config.wtf like the other graphics settings
+#if defined(WOWDECOMP_PLATFORM_WEB)
+    CVar* skyClouds = CVar::Register("skyClouds", "Show the clouds in the sky: 0 or 1", 1, "0", SkyCloudsCallback, CATEGORY_GRAPHICS, false, nullptr, false);
+#else
+    CVar* skyClouds = CVar::Register("skyClouds", "Show the clouds in the sky: 0 or 1", 1, "1", SkyCloudsCallback, CATEGORY_GRAPHICS, false, nullptr, false);
+#endif
+    DayNight::g_clouds.m_enabled = skyClouds->m_intValue != 0;
     s_cvNightDarkness = CVar::Register("nightDarkness", "Darker nights: 0 = normal, 1 = black at midnight", 1, "0", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
     // wow335modding: read in CGWorldFrame (WorldFrame.cpp); not saved, so every session starts on the real time
     CVar::Register("timePreview", "Show this hour of the day (e.g. 23.5 = 23:30); -1 = the real time", 0, "-1", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
