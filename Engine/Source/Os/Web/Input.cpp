@@ -2,8 +2,10 @@
 // canvas; focus, close) are handled on the page's main thread and pushed into the same OSEVENT queue the
 // Windows window procedure fills, with the same parameters, so the client on its worker thread sees no difference.
 // The first click captures the pointer (a pointer lock) and keeps it, so the browser shows its "press Esc" notice once
-// rather than at every camera turn. While captured the client's cursor (it draws its own) moves by the pointer's
-// movement, and relative mode (camera turning) passes that movement on instead. Esc or leaving the tab frees it.
+// rather than at every camera turn. The client's cursor (it draws its own) moves by the pointer's movement, and
+// relative mode (camera turning) passes that movement on instead. Esc or leaving the tab frees the pointer, and the
+// browser puts it back where the capture started; the client's cursor stays put and moves on from there, and lines up
+// with the real pointer again when that comes back from outside the page.
 #if defined(WOWDECOMP_PLATFORM_WEB)
 
 #include <algorithm>
@@ -30,6 +32,7 @@ int32_t s_mouseX;
 int32_t s_mouseY;
 OS_MOUSE_MODE s_mouseMode = OS_MOUSE_MODE_NORMAL;
 bool s_captured;
+bool s_cursorSynced; // the client's cursor is at the real pointer; cleared when the pointer leaves the canvas
 float s_mouseSpeed = 1.0f;
 
 struct Lock {
@@ -175,7 +178,7 @@ EM_BOOL OnMouse(int eventType, const EmscriptenMouseEvent* event, void*) {
     if (eventType == EMSCRIPTEN_EVENT_MOUSEMOVE) {
         if (s_mouseMode == OS_MOUSE_MODE_RELATIVE) {
             Put(OS_INPUT_MOUSE_MOVE_RELATIVE, 0, static_cast<int32_t>(event->movementX * s_mouseSpeed), static_cast<int32_t>(event->movementY * s_mouseSpeed));
-        } else if (s_captured) {
+        } else if (s_cursorSynced || s_captured) {
             double scale = CanvasScale();
             int width = 0;
             int height = 0;
@@ -187,9 +190,15 @@ EM_BOOL OnMouse(int eventType, const EmscriptenMouseEvent* event, void*) {
             double scale = CanvasScale();
             s_mouseX = static_cast<int32_t>(event->targetX * scale);
             s_mouseY = static_cast<int32_t>(event->targetY * scale);
+            s_cursorSynced = true;
             Put(OS_INPUT_MOUSE_MOVE, 0, s_mouseX, s_mouseY);
         }
         return EM_TRUE;
+    }
+
+    if (eventType == EMSCRIPTEN_EVENT_MOUSELEAVE) {
+        s_cursorSynced = false;
+        return EM_FALSE;
     }
 
     MOUSEBUTTON button = ConvertButton(event->button);
@@ -275,6 +284,7 @@ void OsInputInitialize() {
     emscripten_set_mousedown_callback_on_thread(CANVAS, nullptr, true, OnMouse, main);
     emscripten_set_mouseup_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, OnMouse, main);
     emscripten_set_mousemove_callback_on_thread(CANVAS, nullptr, true, OnMouse, main);
+    emscripten_set_mouseleave_callback_on_thread(CANVAS, nullptr, true, OnMouse, main);
     emscripten_set_wheel_callback_on_thread(CANVAS, nullptr, true, OnWheel, main);
     emscripten_set_focus_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, OnFocus, main);
     emscripten_set_blur_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, OnFocus, main);
