@@ -142,6 +142,18 @@ EM_BOOL OnKey(int eventType, const EmscriptenKeyboardEvent* event, void*) {
     return strcmp(event->code, "F5") && strcmp(event->code, "F11") && strcmp(event->code, "F12");
 }
 
+// Canvas pixels per CSS pixel. The page sizes the canvas in display pixels (Tools/WebClient/index.html) while events
+// arrive in CSS pixels; the client, like on Windows, works in the pixels it renders.
+double CanvasScale() {
+    int width = 0;
+    int height = 0;
+    double cssWidth = 0.0;
+    double cssHeight = 0.0;
+    emscripten_get_canvas_element_size(CANVAS, &width, &height);
+    emscripten_get_element_css_size(CANVAS, &cssWidth, &cssHeight);
+    return cssWidth > 0.0 ? width / cssWidth : 1.0;
+}
+
 MOUSEBUTTON ConvertButton(unsigned short button) {
     switch (button) {
         case 0: return MOUSE_BUTTON_LEFT;
@@ -160,8 +172,9 @@ EM_BOOL OnMouse(int eventType, const EmscriptenMouseEvent* event, void*) {
         if (s_mouseMode == OS_MOUSE_MODE_RELATIVE) {
             Put(OS_INPUT_MOUSE_MOVE_RELATIVE, 0, static_cast<int32_t>(event->movementX * s_mouseSpeed), static_cast<int32_t>(event->movementY * s_mouseSpeed));
         } else {
-            s_mouseX = event->targetX;
-            s_mouseY = event->targetY;
+            double scale = CanvasScale();
+            s_mouseX = static_cast<int32_t>(event->targetX * scale);
+            s_mouseY = static_cast<int32_t>(event->targetY * scale);
             Put(OS_INPUT_MOUSE_MOVE, 0, s_mouseX, s_mouseY);
         }
         return EM_TRUE;
@@ -201,9 +214,13 @@ EM_BOOL OnFocus(int eventType, const EmscriptenFocusEvent*, void*) {
     return EM_FALSE;
 }
 
-EM_BOOL OnResize(int, const EmscriptenUiEvent* event, void*) {
+// The page's own resize handler, registered before this one, has already resized the canvas.
+EM_BOOL OnResize(int, const EmscriptenUiEvent*, void*) {
+    int width = 0;
+    int height = 0;
+    emscripten_get_canvas_element_size(CANVAS, &width, &height);
     Lock lock;
-    Put(OS_INPUT_SIZE, event->windowInnerWidth, event->windowInnerHeight, 0);
+    Put(OS_INPUT_SIZE, width, height, 0);
     return EM_FALSE;
 }
 

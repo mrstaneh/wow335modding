@@ -29,9 +29,15 @@
   const canvas = document.getElementById('canvas');
   const status = document.getElementById('status');
   const view = canvas.getContext('bitmaprenderer', { alpha: false });
-  // Canvas pixels = CSS pixels, so mouse coordinates (Os/Web/Input.cpp) need no scaling.
-  // ponytail: no devicePixelRatio, so HiDPI screens render at CSS resolution.
-  function fit() { canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; }
+  // The game renders at the display's resolution: CSS size times devicePixelRatio (Windows display scaling, browser
+  // zoom). Os/Web/Input.cpp maps mouse positions by the same ratio. ?lowres renders at CSS pixels instead (at 150%
+  // scaling less than half the pixels), for slower GPUs.
+  const lowres = new URLSearchParams(location.search).has('lowres');
+  function fit() {
+    const ratio = lowres ? 1 : devicePixelRatio;
+    canvas.width = Math.round(canvas.clientWidth * ratio);
+    canvas.height = Math.round(canvas.clientHeight * ratio);
+  }
   fit();
   window.addEventListener('resize', fit);
 
