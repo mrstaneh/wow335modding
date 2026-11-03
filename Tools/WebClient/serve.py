@@ -49,8 +49,10 @@ REGISTER_LOCK = threading.Lock()
 # Guest accounts: GUEST and 11 letters and digits, a 16-character password of the same.
 GUEST_NAME = re.compile(r'GUEST[A-Z0-9]{11}')
 ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+# discord_name: the Discord username, refreshed at every Discord sign-in, for the character screen.
 DISCORD_TABLE = ('CREATE TABLE IF NOT EXISTS web_discord (discord_id BIGINT UNSIGNED PRIMARY KEY, '
-                 'account_id INT UNSIGNED NOT NULL UNIQUE, password VARCHAR(16) NOT NULL);\n')
+                 'account_id INT UNSIGNED NOT NULL UNIQUE, password VARCHAR(16) NOT NULL, '
+                 "discord_name VARCHAR(64) NOT NULL DEFAULT '');\n")
 # Discord sign-ins under way: state -> (expiry, redirect URI, (guest name, password) to save, or None to sign in).
 # ponytail: in memory; a restart drops sign-ins in progress, which then just start over.
 DISCORD_STATES = {}
@@ -122,7 +124,8 @@ def discord_config():
 
 
 def discord_user(config, code, redirect_uri):
-    """(id, name) of the Discord account that signed in with this code."""
+    """(id, username) of the Discord account that signed in with this code: the unique name, now that Discord has
+    dropped the #1234 numbers (the display name is not unique)."""
     agent = {'User-Agent': 'wow335modding-webclient (serve.py)'}  # Discord refuses Python's default agent
     form = urlencode({'client_id': config['client_id'], 'client_secret': config['client_secret'],
                       'grant_type': 'authorization_code', 'code': code, 'redirect_uri': redirect_uri}).encode()
@@ -131,7 +134,7 @@ def discord_user(config, code, redirect_uri):
         token = json.load(response)['access_token']
     with urlopen(Request('https://discord.com/api/users/@me', headers={**agent, 'Authorization': f'Bearer {token}'}), timeout=10) as response:
         user = json.load(response)
-    return str(user['id']), user.get('global_name') or user['username']
+    return str(user['id']), user['username']
 
 
 # Where the Discord pages send the browser: the account to keep (JSON), and whether to ask first. The page asks anyway
@@ -280,18 +283,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def discord_saved(self):
-        """'1' when the guest account ?username= is saved with a Discord account, else '0'. The character screen asks
-        this rather than trusting the browser, whose copy misses saves made from another address of this server."""
+        """The Discord username the guest account ?username= is saved with (empty if not known yet), or 404 when it is
+        not saved. The character screen asks this rather than trusting the browser, whose copy misses saves made from
+        another address of this server."""
         username = parse_qs(self.path.partition('?')[2]).get('username', [''])[0]
         if not GUEST_NAME.fullmatch(username):
-            return self.reply(200, '0')
+            return self.reply(404, '')
         try:
-            rows = sql(DISCORD_TABLE + f"SELECT COUNT(*) FROM web_discord JOIN account ON account.id = web_discord.account_id "
+            # hex, because the name comes from Discord
+            rows = sql(DISCORD_TABLE + f"SELECT HEX(discord_name) FROM web_discord JOIN account ON account.id = web_discord.account_id "
                        f"WHERE account.username = '{username}';")
         except OSError as error:
             print('discord check failed:', error)
             return self.reply(503, 'The account database is not reachable right now.')
-        self.reply(200, rows[0][0])
+        if not rows:
+            return self.reply(404, '')
+        self.reply(200, bytes.fromhex(rows[0][0]).decode(errors='replace'))
 
     def discord_callback(self):
         query = parse_qs(self.path.partition('?')[2])
@@ -306,6 +313,9 @@ class Handler(BaseHTTPRequestHandler):
             if not discord_id.isdigit():
                 raise ValueError(discord_id)
             saved = discord_account(discord_id)
+            name_sql = f"UNHEX('{name.encode()[:64].hex()}')"  # hex, because the name comes from Discord
+            if saved:
+                sql(f'UPDATE web_discord SET discord_name = {name_sql} WHERE discord_id = {discord_id};')
             if guest is None:
                 if not saved:
                     return self.account_page('No game account is saved with this Discord account yet. Play, then use '
@@ -316,8 +326,8 @@ class Handler(BaseHTTPRequestHandler):
                                          'instead? The guest account on this browser is not saved anywhere, so it '
                                          'would be lost.', (*saved, name))
             if not saved:
-                rows = sql(DISCORD_TABLE + f"INSERT IGNORE INTO web_discord (discord_id, account_id, password) "
-                           f"SELECT {discord_id}, id, '{guest[1]}' FROM account WHERE username = '{guest[0]}';\n"
+                rows = sql(DISCORD_TABLE + f"INSERT IGNORE INTO web_discord (discord_id, account_id, password, discord_name) "
+                           f"SELECT {discord_id}, id, '{guest[1]}', {name_sql} FROM account WHERE username = '{guest[0]}';\n"
                            "SELECT ROW_COUNT();")
                 if rows != [['1']]:
                     return self.account_page('This game account is already saved with a different Discord account.')
