@@ -10,6 +10,19 @@
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Client.h"
 
+// The client expects the Windows rand(): 0 to 32767 (cloud noise, animation variations, model repeat counts). The
+// browser's C library returns up to 2^31 - 1, so these replace it (an object in the executable wins over libc's).
+static uint32_t s_randSeed = 1;
+
+extern "C" void srand(unsigned int seed) {
+    s_randSeed = seed;
+}
+
+extern "C" int rand() {
+    s_randSeed = s_randSeed * 214013 + 2531011;
+    return (s_randSeed >> 16) & 0x7FFF;
+}
+
 int main() {
     // The install folder (Process/Web/Process.cpp): Data comes over HTTP (System/File/Web/WebFile.h). WTF is kept in
     // the browser's IndexedDB (mounted by the page, Tools/WebClient/index.html); the other folders the client writes
