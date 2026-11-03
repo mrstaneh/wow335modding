@@ -150,28 +150,43 @@ diff -ruN orig/Interface/GlueXML/CharacterSelect.lua work/Interface/GlueXML/Char
  end
  
  function CharacterSelect_OnHide()
-@@ -447,6 +467,25 @@
+@@ -435,8 +455,12 @@
+ end
+ 
+ function CharacterDeleteDialog_OnShow()
+-	local name, race, class, level = GetCharacterInfo(CharacterSelect.selectedIndex);
+-	CharacterDeleteText1:SetFormattedText(CONFIRM_CHAR_DELETE, name, level, class);
++	if ( CharacterDeleteDialog.account ) then
++		CharacterDeleteText1:SetText(WEB_DELETE_ACCOUNT_CONFIRM);
++	else
++		local name, race, class, level = GetCharacterInfo(CharacterSelect.selectedIndex);
++		CharacterDeleteText1:SetFormattedText(CONFIRM_CHAR_DELETE, name, level, class);
++	end
+ 	CharacterDeleteBackground:SetHeight(16 + CharacterDeleteText1:GetHeight() + CharacterDeleteText2:GetHeight() + 23 + CharacterDeleteEditBox:GetHeight() + 8 + CharacterDeleteButton1:GetHeight() + 16);
+ 	CharacterDeleteButton1:Disable();
+ end
+@@ -447,6 +471,25 @@
  	EnterWorld();
  end
  
-+-- Browser build: deletes the guest account with its characters and Discord link (WebDeleteAccount), then back to the
-+-- login screen, where Play starts a new one.
-+GlueDialogTypes["WEB_DELETE_ACCOUNT"] = {
-+	text = WEB_DELETE_ACCOUNT_CONFIRM,
-+	button1 = WEB_DELETE_ACCOUNT,
-+	button2 = CANCEL,
-+	showAlert = 1,
-+	escapeHides = true,
-+	OnAccept = function()
-+		local deleted, message = WebDeleteAccount();
-+		if ( deleted ) then
-+			CharacterSelect_Exit();
-+			GlueDialog_Show("OKAY", WEB_ACCOUNT_DELETED);
-+		else
-+			GlueDialog_Show("OKAY", message);
-+		end
-+	end,
-+}
++-- DELETE typed and confirmed: the selected character, or with .account (browser build's Delete Account button) the
++-- guest account with all its characters and its Discord link (WebDeleteAccount), then back to the login screen, where
++-- Play starts a new one.
++function CharacterDeleteDialog_Accept()
++	local account = CharacterDeleteDialog.account;
++	CharacterDeleteDialog:Hide();
++	if ( not account ) then
++		DeleteCharacter(CharacterSelect.selectedIndex);
++		return;
++	end
++	local deleted, message = WebDeleteAccount();
++	if ( deleted ) then
++		CharacterSelect_Exit();
++		GlueDialog_Show("OKAY", WEB_ACCOUNT_DELETED);
++	else
++		GlueDialog_Show("OKAY", message);
++	end
++end
 +
  function CharacterSelect_Exit()
  	PlaySound("gsCharacterSelectionExit");
@@ -196,7 +211,7 @@ diff -ruN orig/Interface/GlueXML/CharacterSelect.xml work/Interface/GlueXML/Char
  						<FontString name="CharSelectCharacterName" inherits="GlueFontNormalHuge">
  							<Anchors>
  								<Anchor point="BOTTOM">
-@@ -333,6 +343,44 @@
+@@ -333,6 +343,46 @@
  							</OnUpdate>
  						</Scripts>
  					</Button>
@@ -215,7 +230,9 @@ diff -ruN orig/Interface/GlueXML/CharacterSelect.xml work/Interface/GlueXML/Char
 +						<Scripts>
 +							<OnClick>
 +								PlaySound("gsTitleOptionOK");
-+								GlueDialog_Show("WEB_DELETE_ACCOUNT");
++								-- the character delete dialog, typing DELETE included, for the whole account
++								CharacterDeleteDialog.account = true;
++								CharacterDeleteDialog:Show();
 +							</OnClick>
 +						</Scripts>
 +					</Button>
@@ -241,6 +258,34 @@ diff -ruN orig/Interface/GlueXML/CharacterSelect.xml work/Interface/GlueXML/Char
  					<Button name="CharacterSelectRealmSplitButton" inherits="GlueButtonTemplate" hidden="true" text="SERVER_SPLIT_BUTTON">
  						<Size>
  							<AbsDimension x="150" y="55"/>
+@@ -1007,8 +1057,7 @@
+ 						</Anchors>
+ 						<Scripts>
+ 							<OnClick>
+-								DeleteCharacter(CharacterSelect.selectedIndex);
+-								CharacterDeleteDialog:Hide();
++								CharacterDeleteDialog_Accept();
+ 								PlaySound("gsTitleOptionOK");
+ 							</OnClick> 
+ 							<OnUpdate>
+@@ -1087,8 +1136,7 @@
+ 					</OnTextChanged> 
+ 					<OnEnterPressed>
+ 						if ( CharacterDeleteButton1:IsEnabled() == 1 ) then
+-							DeleteCharacter(CharacterSelect.selectedIndex);
+-							CharacterDeleteDialog:Hide();
++							CharacterDeleteDialog_Accept();
+ 						end
+ 					</OnEnterPressed>
+ 					<OnEscapePressed>
+@@ -1105,6 +1153,7 @@
+ 			</OnShow>
+ 			<OnHide>
+ 				CharacterDeleteEditBox:SetText("");
++				self.account = nil;
+ 			</OnHide>
+ 		</Scripts>
+ 	</Frame>
 diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStrings.lua
 --- orig/Interface/GlueXML/GlueStrings.lua
 +++ work/Interface/GlueXML/GlueStrings.lua
@@ -268,7 +313,7 @@ diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStri
  WEATHER_DETAIL = "Weather Intensity";
 +WEB_ACCOUNT_DELETED = "Your account has been deleted.";
 +WEB_DELETE_ACCOUNT = "Delete Account";
-+WEB_DELETE_ACCOUNT_CONFIRM = "Delete this account and all of its characters for good? It is also removed from Discord if it was saved there. This cannot be undone.";
++WEB_DELETE_ACCOUNT_CONFIRM = "Delete this account and |cffffffffall of its characters|r for good?\nIt is also removed from Discord if it was saved there.";
 +WEB_DISCORD_SAVE = "Save with Discord";
 +WEB_DISCORD_SAVED = "Saved with Discord: %s";
 +WEB_DISCORD_SAVED_UNNAMED = "Saved with Discord";
