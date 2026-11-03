@@ -468,17 +468,12 @@ CHARCODEDESC* TEXTURECACHEROW::CreateNewDesc(GLYPHBITMAPDATA* data, uint32_t row
     }
 
     CHARCODEDESC* desc = nullptr;
-    int32_t inserted = 0;
 
-    for (CHARCODEDESC* glyph = head; glyph; ) {
+    for (CHARCODEDESC* glyph = head; glyph; glyph = this->m_glyphlist.Next(glyph)) {
         CHARCODEDESC* next = this->m_glyphlist.Next(glyph);
         uint32_t gap = next ? next->m_glyphStartPixel - glyph->m_glyphEndPixel - 1 : 255 - glyph->m_glyphEndPixel;
 
-        if (inserted) {
-            if (gap > this->m_widestFreeSlot) {
-                this->m_widestFreeSlot = gap;
-            }
-        } else if (gap >= width) {
+        if (gap >= width) {
             desc = new (__FILE__, __LINE__) CHARCODEDESC;
             this->m_glyphlist.LinkNode(desc, 1, glyph);
             desc->m_glyphStartPixel = glyph->m_glyphEndPixel + 1;
@@ -486,12 +481,28 @@ CHARCODEDESC* TEXTURECACHEROW::CreateNewDesc(GLYPHBITMAPDATA* data, uint32_t row
             desc->m_rowNumber = rowNumber;
             desc->m_bitmapData.CopyFrom(data);
             desc->GenerateTextureCoords(rowNumber, cellHeight);
-            inserted = 1;
-        } else if (!next) {
-            return nullptr;
+            break;
         }
+    }
 
-        glyph = next;
+    if (!desc) {
+        return nullptr;
+    }
+
+    // wow335modding: the widest free slot over the whole row, the new glyph's own trailing gap included. Updating it
+    // only for the glyphs after the insertion point skipped the new glyph, so a row with room left reported 0 after its
+    // second glyph: fonts spread over many texture pages, and a string drawn page by page put later letters (an "O" on
+    // page 2) over earlier ones (the "p" on page 1).
+    CHARCODEDESC* first = this->m_glyphlist.Head();
+    this->m_widestFreeSlot = first ? first->GapToPrevious() : 0;
+
+    for (CHARCODEDESC* glyph = first; glyph; glyph = this->m_glyphlist.Next(glyph)) {
+        CHARCODEDESC* next = this->m_glyphlist.Next(glyph);
+        uint32_t gap = next ? next->m_glyphStartPixel - glyph->m_glyphEndPixel - 1 : 255 - glyph->m_glyphEndPixel;
+
+        if (gap > this->m_widestFreeSlot) {
+            this->m_widestFreeSlot = gap;
+        }
     }
 
     return desc;
