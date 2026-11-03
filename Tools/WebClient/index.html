@@ -28,6 +28,21 @@
   for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) ProxiedWebSocket[k] = NativeWebSocket[k];
   window.WebSocket = ProxiedWebSocket;
 
+  // Back (mouse side buttons, the keyboard's Back key, Alt+Left) would leave the game. Keep one extra history entry
+  // above the page and put it back whenever it is used up. Browsers skip entries added before the user interacted with
+  // the page, so it is added on the first press. Side buttons belong to the game (Os/Web/Input.cpp) either way.
+  let historyTrap = false;
+  const trapHistory = () => {
+    if (!historyTrap) {
+      history.pushState({ wow: true }, '');
+      historyTrap = true;
+    }
+  };
+  addEventListener('pointerdown', trapHistory, true);
+  addEventListener('keydown', trapHistory, true);
+  addEventListener('popstate', () => history.pushState({ wow: true }, ''));
+  addEventListener('mouseup', (event) => { if (event.button === 3 || event.button === 4) event.preventDefault(); });
+
   const canvas = document.getElementById('canvas');
   const status = document.getElementById('status');
   const view = canvas.getContext('bitmaprenderer', { alpha: false });
