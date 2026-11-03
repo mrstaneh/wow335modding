@@ -123,7 +123,7 @@ diff -ruN orig/Interface/GlueXML/AccountLogin.xml work/Interface/GlueXML/Account
 diff -ruN orig/Interface/GlueXML/CharacterSelect.lua work/Interface/GlueXML/CharacterSelect.lua
 --- orig/Interface/GlueXML/CharacterSelect.lua
 +++ work/Interface/GlueXML/CharacterSelect.lua
-@@ -162,6 +162,22 @@
+@@ -162,6 +162,26 @@
  
  	--Clear out the addons selected item
  	GlueDropDownMenu_SetSelectedValue(AddonCharacterDropDown, ALL);
@@ -131,8 +131,12 @@ diff -ruN orig/Interface/GlueXML/CharacterSelect.lua work/Interface/GlueXML/Char
 +	-- The browser build's guest account lives in the browser; saved with Discord it outlives the browser's data.
 +	CharacterSelectDiscordButton:Hide();
 +	CharacterSelectDiscordText:Hide();
++	CharacterSelectDeleteAccountButton:Hide();
 +	if ( IsWebClient ) then
 +		local discord = WebDiscordState();
++		if ( discord ~= nil ) then
++			CharacterSelectDeleteAccountButton:Show();
++		end
 +		if ( discord == false ) then
 +			CharacterSelectDiscordButton:Show();
 +		elseif ( discord == "" ) then
@@ -146,6 +150,32 @@ diff -ruN orig/Interface/GlueXML/CharacterSelect.lua work/Interface/GlueXML/Char
  end
  
  function CharacterSelect_OnHide()
+@@ -447,6 +467,25 @@
+ 	EnterWorld();
+ end
+ 
++-- Browser build: deletes the guest account with its characters and Discord link (WebDeleteAccount), then back to the
++-- login screen, where Play starts a new one.
++GlueDialogTypes["WEB_DELETE_ACCOUNT"] = {
++	text = WEB_DELETE_ACCOUNT_CONFIRM,
++	button1 = WEB_DELETE_ACCOUNT,
++	button2 = CANCEL,
++	showAlert = 1,
++	escapeHides = true,
++	OnAccept = function()
++		local deleted, message = WebDeleteAccount();
++		if ( deleted ) then
++			CharacterSelect_Exit();
++			GlueDialog_Show("OKAY", WEB_ACCOUNT_DELETED);
++		else
++			GlueDialog_Show("OKAY", message);
++		end
++	end,
++}
++
+ function CharacterSelect_Exit()
+ 	PlaySound("gsCharacterSelectionExit");
+ 	DisconnectFromServer();
 diff -ruN orig/Interface/GlueXML/CharacterSelect.xml work/Interface/GlueXML/CharacterSelect.xml
 --- orig/Interface/GlueXML/CharacterSelect.xml
 +++ work/Interface/GlueXML/CharacterSelect.xml
@@ -166,10 +196,29 @@ diff -ruN orig/Interface/GlueXML/CharacterSelect.xml work/Interface/GlueXML/Char
  						<FontString name="CharSelectCharacterName" inherits="GlueFontNormalHuge">
  							<Anchors>
  								<Anchor point="BOTTOM">
-@@ -333,6 +343,25 @@
+@@ -333,6 +343,44 @@
  							</OnUpdate>
  						</Scripts>
  					</Button>
++					<!-- browser build: deletes the guest account (CharacterSelect_OnShow); the add-ons button is never shown there -->
++					<Button name="CharacterSelectDeleteAccountButton" inherits="GlueButtonSmallTemplate" hidden="true" text="WEB_DELETE_ACCOUNT">
++						<Size>
++							<AbsDimension x="150" y="30"/>
++						</Size>
++						<Anchors>
++							<Anchor point="BOTTOMLEFT">
++								<Offset>
++									<AbsDimension x="30" y="25"/>
++								</Offset>
++							</Anchor>
++						</Anchors>
++						<Scripts>
++							<OnClick>
++								PlaySound("gsTitleOptionOK");
++								GlueDialog_Show("WEB_DELETE_ACCOUNT");
++							</OnClick>
++						</Scripts>
++					</Button>
 +					<!-- browser build: keeps the guest account with a Discord account (CharacterSelect_OnShow) -->
 +					<Button name="CharacterSelectDiscordButton" inherits="GlueButtonSmallTemplate" hidden="true" text="WEB_DISCORD_SAVE">
 +						<Size>
@@ -213,10 +262,13 @@ diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStri
  ENTER_PIN_NUMBER = "Enter Your PIN";
  ENTER_WORLD = "Enter World";
  ENVIRONMENT_DETAIL = "Environment Detail";
-@@ -862,6 +862,11 @@
+@@ -862,6 +862,14 @@
  WEAPONS = "Weapons";
  WEAPON_SKILL = "W.Skill %d";
  WEATHER_DETAIL = "Weather Intensity";
++WEB_ACCOUNT_DELETED = "Your account has been deleted.";
++WEB_DELETE_ACCOUNT = "Delete Account";
++WEB_DELETE_ACCOUNT_CONFIRM = "Delete this account and all of its characters for good? It is also removed from Discord if it was saved there. This cannot be undone.";
 +WEB_DISCORD_SAVE = "Save with Discord";
 +WEB_DISCORD_SAVED = "Saved with Discord: %s";
 +WEB_DISCORD_SAVED_UNNAMED = "Saved with Discord";

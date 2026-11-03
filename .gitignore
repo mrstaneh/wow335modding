@@ -419,3 +419,5 @@ Tools/WebClient/test-account.txt
 Tools/WebClient/certs/
 # the Discord application's secret (Tools/WebClient/serve.py)
 Tools/WebClient/discord.json
+# the worldserver account serve.py runs SOAP commands as (Tools/WebClient/serve.py)
+Tools/WebClient/soap.json

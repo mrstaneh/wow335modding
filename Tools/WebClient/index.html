@@ -104,6 +104,9 @@
     wowSetAccount(username, password) {
       try { localStorage.setItem('wowAccount', JSON.stringify({ username, password })); } catch (error) {}
     },
+    wowForgetAccount() {
+      try { localStorage.removeItem('wowAccount'); } catch (error) {}
+    },
     print: (text) => console.log(text),
     printErr: (text) => console.error(text),
     // WTF (settings, keybinds, macros, addon SavedVariables) lives in this browser's IndexedDB, loaded before main()

@@ -1642,6 +1642,23 @@ EM_JS(char*, WebDiscordSavedRequest, (const char* username, int32_t* status), {
     return stringToNewUTF8(text);
 });
 
+// POST /delete: deletes the guest account with its characters; status 200 when it is gone, else the reason.
+EM_JS(char*, WebDeleteRequest, (const char* username, const char* password, int32_t* status), {
+    var request = new XMLHttpRequest();
+    var text;
+    try {
+        request.open("POST", "delete", false);
+        request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+        request.send("username=" + encodeURIComponent(UTF8ToString(username)) + "&password=" + encodeURIComponent(UTF8ToString(password)));
+        HEAP32[status >> 2] = request.status;
+        text = request.responseText;
+    } catch (e) {
+        HEAP32[status >> 2] = 0;
+        text = "Could not reach the server.";
+    }
+    return stringToNewUTF8(text);
+});
+
 struct WebAccount {
     char username[64];
     char password[64];
@@ -1711,6 +1728,27 @@ static int32_t Script_WebDiscordState(lua_State* L) {
     }
     free(name);
     return 1;
+}
+
+// wow335modding: deleted, message = WebDeleteAccount(): deletes this session's account, the browser's guest account,
+// with its characters and Discord link, and the browser forgets it.
+static int32_t Script_WebDeleteAccount(lua_State* L) {
+    WebAccount account;
+    if (!WebStoredAccount(account) || strcmp(account.username, CGlueMgr::m_accountName)) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "Only the guest account this browser plays can be deleted here.");
+        return 2;
+    }
+
+    int32_t status = 0;
+    char* message = WebDeleteRequest(account.username, account.password, &status);
+    if (status == 200) {
+        MAIN_THREAD_EM_ASM({ Module.wowForgetAccount(); });
+    }
+    lua_pushboolean(L, status == 200);
+    lua_pushstring(L, message);
+    free(message);
+    return 2;
 }
 
 // wow335modding: WebDiscord("signin" or "save"): the page goes to Discord (index.html wowDiscord), to sign in to the
@@ -1854,6 +1892,7 @@ static FrameScript_Method s_scriptFunctions[] = {
     { "WebGuestAccount", &Script_WebGuestAccount },
     { "WebDiscordState", &Script_WebDiscordState },
     { "WebDiscord", &Script_WebDiscord },
+    { "WebDeleteAccount", &Script_WebDeleteAccount },
     { "WebAutoLogin", &Script_WebAutoLogin },
 #endif
 };

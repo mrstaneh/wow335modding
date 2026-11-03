@@ -12,6 +12,9 @@
   POST /auth/discord/link saves the browser's guest account with a Discord account, GET /auth/discord signs another
   browser in to the account saved with yours. The links are in the web_discord table, with the guest's generated
   password so every browser signed in stays signed in.
+- POST /delete: deletes the browser's guest account with its characters (and so its Discord link). The worldserver does
+  it (.account delete, over SOAP: SOAP.Enabled = 1 in worldserver.conf), as soap.json's {"url":
+  "http://127.0.0.1:7878/", "username": ..., "password": ...}, an account of GM level 3.
 
 Usage: python serve.py [--port 8000] [--build ../../bin/Win] [--data ../../bin/Win/Data]
 On your local network (HTTPS required there): python serve.py --host 0.0.0.0 --cert certs/wow.pem --key certs/wow.key
@@ -33,6 +36,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode
+import urllib.error
 from urllib.request import Request, urlopen
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -52,7 +56,8 @@ ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 # discord_name: the Discord username, refreshed at every Discord sign-in, for the character screen.
 DISCORD_TABLE = ('CREATE TABLE IF NOT EXISTS web_discord (discord_id BIGINT UNSIGNED PRIMARY KEY, '
                  'account_id INT UNSIGNED NOT NULL UNIQUE, password VARCHAR(16) NOT NULL, '
-                 "discord_name VARCHAR(64) NOT NULL DEFAULT '');\n")
+                 "discord_name VARCHAR(64) NOT NULL DEFAULT '', CONSTRAINT web_discord_account FOREIGN KEY (account_id) "
+                 'REFERENCES account (id) ON DELETE CASCADE);\n')
 # Discord sign-ins under way: state -> (expiry, redirect URI, (guest name, password) to save, or None to sign in).
 # ponytail: in memory; a restart drops sign-ins in progress, which then just start over.
 DISCORD_STATES = {}
@@ -113,6 +118,30 @@ def discord_account(discord_id):
     rows = sql(DISCORD_TABLE + f'SELECT account.username, web_discord.password FROM web_discord '
                f'JOIN account ON account.id = web_discord.account_id WHERE discord_id = {discord_id};')
     return tuple(rows[0]) if rows else None
+
+
+def world_command(command):
+    """Runs a worldserver console command over SOAP: (True, its output) or (False, why it failed)."""
+    try:
+        with open(os.path.join(HERE, 'soap.json')) as f:
+            config = json.load(f)
+    except (OSError, ValueError):
+        return False, 'Deleting accounts is not set up on this server.'
+    envelope = ('<?xml version="1.0" encoding="utf-8"?><SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" '
+                'xmlns:ns1="urn:AC"><SOAP-ENV:Body><ns1:executeCommand><command>' + html.escape(command) +
+                '</command></ns1:executeCommand></SOAP-ENV:Body></SOAP-ENV:Envelope>')
+    login = base64.b64encode(f"{config['username']}:{config['password']}".encode()).decode()
+    request = Request(config['url'], envelope.encode(), {'Content-Type': 'text/xml; charset=utf-8', 'Authorization': f'Basic {login}'})
+    try:
+        with urlopen(request, timeout=15) as response:
+            text = response.read().decode(errors='replace')
+    except urllib.error.HTTPError as error:
+        fault = re.search(r'<faultstring>(.*?)</faultstring>', error.read().decode(errors='replace'), re.S)
+        return False, html.unescape(fault.group(1)) if fault else f'worldserver answered {error.code}'
+    except OSError:
+        return False, 'The world server is not reachable right now.'
+    result = re.search(r'<result>(.*?)</result>', text, re.S)
+    return True, html.unescape(result.group(1)) if result else ''
 
 
 def discord_config():
@@ -226,6 +255,8 @@ class Handler(BaseHTTPRequestHandler):
         form = parse_qs(self.rfile.read(min(int(self.headers.get('Content-Length', 0)), 1024)).decode(errors='replace'))
         if self.path == '/guest':
             return self.guest()
+        if self.path == '/delete':
+            return self.delete_guest(form.get('username', [''])[0], form.get('password', [''])[0])
         if self.path == '/auth/discord/link':
             guest = (form.get('username', [''])[0], form.get('password', [''])[0])
             try:
@@ -243,6 +274,22 @@ class Handler(BaseHTTPRequestHandler):
         if client in ('127.0.0.1', '::1') and self.headers.get('X-Forwarded-For'):
             client = self.headers['X-Forwarded-For'].split(',')[0].strip()
         return client
+
+    def delete_guest(self, username, password):
+        """Deletes a guest account given its password, with its characters; the Discord link goes with it (the
+        foreign key on web_discord)."""
+        try:
+            if not guest_password_ok(username, password):
+                return self.reply(403, 'Only the guest account this browser plays can be deleted here.')
+        except OSError as error:
+            print('delete failed:', error)
+            return self.reply(503, 'The account database is not reachable right now.')
+        done, output = world_command(f'account delete {username}')  # username is a checked guest name
+        if not done:
+            print('delete failed:', output)
+            return self.reply(503, f'Deleting the account failed: {output}')
+        print('deleted', username, '-', output.strip())
+        self.reply(200, 'The account is deleted.')
 
     def guest(self):
         """A new guest account, as 'USERNAME PASSWORD'."""
