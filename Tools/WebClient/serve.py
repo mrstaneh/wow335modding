@@ -215,6 +215,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.discord_start(None)
         if path == '/auth/discord/callback':
             return self.discord_callback()
+        if path == '/auth/discord/saved':
+            return self.discord_saved()
         self.serve(True)
 
     def do_POST(self):
@@ -276,6 +278,20 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Location', url)
         self.send_header('Content-Length', '0')
         self.end_headers()
+
+    def discord_saved(self):
+        """'1' when the guest account ?username= is saved with a Discord account, else '0'. The character screen asks
+        this rather than trusting the browser, whose copy misses saves made from another address of this server."""
+        username = parse_qs(self.path.partition('?')[2]).get('username', [''])[0]
+        if not GUEST_NAME.fullmatch(username):
+            return self.reply(200, '0')
+        try:
+            rows = sql(DISCORD_TABLE + f"SELECT COUNT(*) FROM web_discord JOIN account ON account.id = web_discord.account_id "
+                       f"WHERE account.username = '{username}';")
+        except OSError as error:
+            print('discord check failed:', error)
+            return self.reply(503, 'The account database is not reachable right now.')
+        self.reply(200, rows[0][0])
 
     def discord_callback(self):
         query = parse_qs(self.path.partition('?')[2])

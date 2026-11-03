@@ -123,7 +123,7 @@ diff -ruN orig/Interface/GlueXML/AccountLogin.xml work/Interface/GlueXML/Account
 diff -ruN orig/Interface/GlueXML/CharacterSelect.lua work/Interface/GlueXML/CharacterSelect.lua
 --- orig/Interface/GlueXML/CharacterSelect.lua
 +++ work/Interface/GlueXML/CharacterSelect.lua
-@@ -162,6 +162,19 @@
+@@ -162,6 +162,22 @@
  
  	--Clear out the addons selected item
  	GlueDropDownMenu_SetSelectedValue(AddonCharacterDropDown, ALL);
@@ -135,6 +135,9 @@ diff -ruN orig/Interface/GlueXML/CharacterSelect.lua work/Interface/GlueXML/Char
 +		local discord = WebDiscordState();
 +		if ( discord == false ) then
 +			CharacterSelectDiscordButton:Show();
++		elseif ( discord == "" ) then
++			CharacterSelectDiscordText:SetText(WEB_DISCORD_SAVED_UNNAMED);
++			CharacterSelectDiscordText:Show();
 +		elseif ( discord ) then
 +			CharacterSelectDiscordText:SetFormattedText(WEB_DISCORD_SAVED, discord);
 +			CharacterSelectDiscordText:Show();
@@ -210,12 +213,13 @@ diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStri
  ENTER_PIN_NUMBER = "Enter Your PIN";
  ENTER_WORLD = "Enter World";
  ENVIRONMENT_DETAIL = "Environment Detail";
-@@ -862,6 +862,10 @@
+@@ -862,6 +862,11 @@
  WEAPONS = "Weapons";
  WEAPON_SKILL = "W.Skill %d";
  WEATHER_DETAIL = "Weather Intensity";
 +WEB_DISCORD_SAVE = "Save with Discord";
 +WEB_DISCORD_SAVED = "Saved with Discord: %s";
++WEB_DISCORD_SAVED_UNNAMED = "Saved with Discord";
 +WEB_DISCORD_SIGN_IN = "Sign in with Discord";
 +WEB_PLAY = "Play";
  WEB_SITE = "WoW Website";

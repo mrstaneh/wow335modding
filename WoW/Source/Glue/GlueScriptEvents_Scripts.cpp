@@ -1626,6 +1626,18 @@ EM_JS(char*, WebGuestRequest, (int32_t* status), {
     return stringToNewUTF8(text);
 });
 
+// GET /auth/discord/saved: 1 when the guest account is saved with a Discord account, 0 when not, -1 when unknown.
+EM_JS(int32_t, WebDiscordSavedRequest, (const char* username), {
+    var request = new XMLHttpRequest();
+    try {
+        request.open("GET", "auth/discord/saved?username=" + encodeURIComponent(UTF8ToString(username)), false);
+        request.send();
+        return request.status == 200 ? Number(request.responseText == "1") : -1;
+    } catch (e) {
+        return -1;
+    }
+});
+
 struct WebAccount {
     char username[64];
     char password[64];
@@ -1675,15 +1687,19 @@ static int32_t Script_WebGuestAccount(lua_State* L) {
 }
 
 // wow335modding: WebDiscordState(): nil when this session is not the browser's guest account, false when that is not
-// saved with Discord, else the name of the Discord account it is saved with.
+// saved with Discord, else the name of the Discord account it is saved with ("" when this browser does not know it).
+// Without a name the server says: a save made from another address of the server (localhost or the public name)
+// leaves the name in that address's storage only.
 static int32_t Script_WebDiscordState(lua_State* L) {
     WebAccount account;
     if (!WebStoredAccount(account) || strcmp(account.username, CGlueMgr::m_accountName)) {
         lua_pushnil(L);
-    } else if (!account.discord[0]) {
-        lua_pushboolean(L, 0);
-    } else {
+    } else if (account.discord[0]) {
         lua_pushstring(L, account.discord);
+    } else if (WebDiscordSavedRequest(account.username) == 1) {
+        lua_pushstring(L, "");
+    } else {
+        lua_pushboolean(L, 0);
     }
     return 1;
 }
