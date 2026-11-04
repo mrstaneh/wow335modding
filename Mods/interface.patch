@@ -1,7 +1,7 @@
 diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.lua work/Interface/FrameXML/VideoOptionsPanels.lua
 --- orig/Interface/FrameXML/VideoOptionsPanels.lua
 +++ work/Interface/FrameXML/VideoOptionsPanels.lua
-@@ -1,5 +1,11 @@
+@@ -1,5 +1,13 @@
  -- if you change something here you probably want to change the glue version too
  
 +-- wow335modding: the browser build's pass over the 3D world (postSharpen, postVibrance)
@@ -9,11 +9,21 @@ diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.lua work/Interface/FrameXML
 +OPTION_TOOLTIP_WEB_SHARPENING = "Sharpens textures and edges of the world, without halos. The interface is left as it is.";
 +WEB_VIBRANCE = "Color Vibrance";
 +OPTION_TOOLTIP_WEB_VIBRANCE = "Livens up muted colors of the world, leaving colors that are already strong mostly alone.";
++WEB_FXAA = "Anti-Aliasing (FXAA)";
++OPTION_TOOLTIP_WEB_FXAA = "Smooths jagged edges of the world. The interface is left as it is.";
 +
  local OPTIONS_FARCLIP_MIN = 177;
  local OPTIONS_FARCLIP_MAX = 1277;
  
-@@ -391,6 +397,8 @@
+@@ -83,6 +91,7 @@
+ 	gxWindow = { text = "WINDOWED_MODE" },
+ 	gxMaximize = { text = "WINDOWED_MAXIMIZED" },
+ 	windowResizeLock = { text = "WINDOW_LOCK" },
++	postFxaa = { text = "WEB_FXAA" },
+ 	desktopGamma = { text = "DESKTOP_GAMMA" },
+ 	gamma = { text = "GAMMA", minValue = -.5, maxValue = .5, valueStep = .1 },
+ 	uiscale = { text = "", minValue = .64, maxValue = 1, valueStep = .01 },
+@@ -391,6 +400,8 @@
  	extShadowQuality = { text = "SHADOW_QUALITY", minValue = 0, maxValue = 4, valueStep = 1 },
  	textureFilteringMode = { text = "ANISOTROPIC", minValue = 0, maxValue = 5, valueStep = 1, gameRestart = 1, tooltipOwnerPoint = "TOPLEFT", tooltipRequirement = OPTION_RESTART_REQUIREMENT, },
  	weatherDensity = { text = "WEATHER_DETAIL", minValue = 0, maxValue = 3, valueStep = 1, tooltipOwnerPoint = "TOPLEFT", },
@@ -25,7 +35,34 @@ diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.lua work/Interface/FrameXML
 diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.xml work/Interface/FrameXML/VideoOptionsPanels.xml
 --- orig/Interface/FrameXML/VideoOptionsPanels.xml
 +++ work/Interface/FrameXML/VideoOptionsPanels.xml
-@@ -759,8 +759,62 @@
+@@ -303,6 +303,26 @@
+ 					</OnLoad>
+ 				</Scripts>
+ 			</CheckButton>		
++			<!-- wow335modding: browser build, FXAA in the pass over the 3D world (CGxDeviceWebGl::PostProcessWorld) -->
++			<CheckButton name="$parentFxaa" inherits="VideoOptionsSmallCheckButtonTemplate">
++				<Anchors>
++					<Anchor point="TOPLEFT" relativeTo="$parentDisableResize" relativePoint="BOTTOMLEFT">
++						<Offset x="-16" y="-4"/>
++					</Anchor>
++				</Anchors>
++				<Scripts>
++					<OnLoad>
++						self.type = CONTROLTYPE_CHECKBOX;
++						self.cvar = "postFxaa";
++						local ok, value = pcall(GetCVar, self.cvar);
++						if ( not ok or not value ) then -- the Windows client has no such setting
++							self:Hide();
++							return;
++						end
++						BlizzardOptionsPanel_RegisterControl(self, self:GetParent());
++					</OnLoad>
++				</Scripts>
++			</CheckButton>
+ 			<Frame name="$parentBrightness" inherits="OptionsBoxTemplate">
+ 				<Size x="380" y="96"/>
+ 				<Anchors>
+@@ -759,8 +779,64 @@
  					<OnValueChanged function="VideoOptionsEffectsPanelSlider_OnValueChanged"/>
  				</Scripts>
  			</Slider>	
@@ -47,7 +84,8 @@ diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.xml work/Interface/FrameXML
 +							BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
 +						end
 +						_G[self:GetName().."Text"]:SetFontObject("GameFontNormalSmall");
-+						if ( not pcall(GetCVar, self.cvar) ) then -- the Windows client has no such setting
++						local ok, value = pcall(GetCVar, self.cvar);
++						if ( not ok or not value ) then -- the Windows client has no such setting
 +							self:Hide();
 +							return;
 +						end
@@ -74,7 +112,8 @@ diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.xml work/Interface/FrameXML
 +							BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
 +						end
 +						_G[self:GetName().."Text"]:SetFontObject("GameFontNormalSmall");
-+						if ( not pcall(GetCVar, self.cvar) ) then -- the Windows client has no such setting
++						local ok, value = pcall(GetCVar, self.cvar);
++						if ( not ok or not value ) then -- the Windows client has no such setting
 +							self:Hide();
 +							return;
 +						end
@@ -89,7 +128,7 @@ diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.xml work/Interface/FrameXML
  				<Anchors>
  					<Anchor point="BOTTOMLEFT">
  						<Offset x="16" y="8"/>
-@@ -807,7 +861,7 @@
+@@ -807,7 +883,7 @@
  			<CheckButton name="$parentDeathEffect" inherits="VideoOptionsSmallCheckButtonTemplate">
  				<Anchors>
  					<Anchor point="TOPLEFT" relativeTo="$parentShaders">
@@ -425,7 +464,7 @@ diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStri
 diff -ruN orig/Interface/GlueXML/VideoOptionsPanels.lua work/Interface/GlueXML/VideoOptionsPanels.lua
 --- orig/Interface/GlueXML/VideoOptionsPanels.lua
 +++ work/Interface/GlueXML/VideoOptionsPanels.lua
-@@ -1,5 +1,11 @@
+@@ -1,5 +1,13 @@
  -- if you change something here you probably want to change the frame version too
  
 +-- wow335modding: the browser build's pass over the 3D world (postSharpen, postVibrance)
@@ -433,11 +472,21 @@ diff -ruN orig/Interface/GlueXML/VideoOptionsPanels.lua work/Interface/GlueXML/V
 +OPTION_TOOLTIP_WEB_SHARPENING = "Sharpens textures and edges of the world, without halos. The interface is left as it is.";
 +WEB_VIBRANCE = "Color Vibrance";
 +OPTION_TOOLTIP_WEB_VIBRANCE = "Livens up muted colors of the world, leaving colors that are already strong mostly alone.";
++WEB_FXAA = "Anti-Aliasing (FXAA)";
++OPTION_TOOLTIP_WEB_FXAA = "Smooths jagged edges of the world. The interface is left as it is.";
 +
  local OPTIONS_FARCLIP_MIN = 177;
  local OPTIONS_FARCLIP_MAX = 1277;
  
-@@ -385,6 +391,8 @@
+@@ -79,6 +87,7 @@
+ 	gxWindow = { text = "WINDOWED_MODE" },
+ 	gxMaximize = { text = "WINDOWED_MAXIMIZED" },
+ 	windowResizeLock = { text = "WINDOW_LOCK" },
++	postFxaa = { text = "WEB_FXAA" },
+ 	desktopGamma = { text = "DESKTOP_GAMMA" },
+ 	gamma = { text = "GAMMA", minValue = -.5, maxValue = .5, valueStep = .1 },
+ }
+@@ -385,6 +394,8 @@
  	extShadowQuality = { text = "SHADOW_QUALITY", minValue = 0, maxValue = 4, valueStep = 1 },	
  	textureFilteringMode = { text = "ANISOTROPIC", minValue = 0, maxValue = 5, valueStep = 1, gameRestart = 1, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", tooltipRequirement = OPTION_RESTART_REQUIREMENT, },
  	weatherDensity = { text = "WEATHER_DETAIL", minValue = 0, maxValue = 3, valueStep = 1, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", },
@@ -449,7 +498,34 @@ diff -ruN orig/Interface/GlueXML/VideoOptionsPanels.lua work/Interface/GlueXML/V
 diff -ruN orig/Interface/GlueXML/VideoOptionsPanels.xml work/Interface/GlueXML/VideoOptionsPanels.xml
 --- orig/Interface/GlueXML/VideoOptionsPanels.xml
 +++ work/Interface/GlueXML/VideoOptionsPanels.xml
-@@ -730,8 +730,62 @@
+@@ -272,6 +272,26 @@
+ 					</OnLoad>
+ 				</Scripts>
+ 			</CheckButton>		
++			<!-- wow335modding: browser build, FXAA in the pass over the 3D world (CGxDeviceWebGl::PostProcessWorld) -->
++			<CheckButton name="$parentFxaa" inherits="VideoOptionsSmallCheckButtonTemplate">
++				<Anchors>
++					<Anchor point="TOPLEFT" relativeTo="$parentDisableResize" relativePoint="BOTTOMLEFT">
++						<Offset x="-16" y="-4"/>
++					</Anchor>
++				</Anchors>
++				<Scripts>
++					<OnLoad>
++						self.type = CONTROLTYPE_CHECKBOX;
++						self.cvar = "postFxaa";
++						local ok, value = pcall(GetCVar, self.cvar);
++						if ( not ok or not value ) then -- the Windows client has no such setting
++							self:Hide();
++							return;
++						end
++						BlizzardOptionsPanel_RegisterControl(self, self:GetParent());
++					</OnLoad>
++				</Scripts>
++			</CheckButton>
+ 			<Frame name="$parentBrightness" inherits="OptionsBoxTemplate">
+ 				<Size x="380" y="96"/>
+ 				<Anchors>
+@@ -730,8 +750,64 @@
  					<OnValueChanged function="VideoOptionsEffectsPanelSlider_OnValueChanged"/>
  				</Scripts>
  			</Slider>	
@@ -471,7 +547,8 @@ diff -ruN orig/Interface/GlueXML/VideoOptionsPanels.xml work/Interface/GlueXML/V
 +							BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
 +						end
 +						_G[self:GetName().."Text"]:SetFontObject("OptionsFontSmall");
-+						if ( not pcall(GetCVar, self.cvar) ) then -- the Windows client has no such setting
++						local ok, value = pcall(GetCVar, self.cvar);
++						if ( not ok or not value ) then -- the Windows client has no such setting
 +							self:Hide();
 +							return;
 +						end
@@ -498,7 +575,8 @@ diff -ruN orig/Interface/GlueXML/VideoOptionsPanels.xml work/Interface/GlueXML/V
 +							BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
 +						end
 +						_G[self:GetName().."Text"]:SetFontObject("OptionsFontSmall");
-+						if ( not pcall(GetCVar, self.cvar) ) then -- the Windows client has no such setting
++						local ok, value = pcall(GetCVar, self.cvar);
++						if ( not ok or not value ) then -- the Windows client has no such setting
 +							self:Hide();
 +							return;
 +						end
@@ -513,7 +591,7 @@ diff -ruN orig/Interface/GlueXML/VideoOptionsPanels.xml work/Interface/GlueXML/V
  				<Anchors>
  					<Anchor point="BOTTOMLEFT">
  						<Offset x="16" y="8"/>
-@@ -779,7 +833,7 @@
+@@ -779,7 +855,7 @@
  			<CheckButton name="$parentDeathEffect" inherits="VideoOptionsSmallCheckButtonTemplate">
  				<Anchors>
  					<Anchor point="TOPLEFT" relativeTo="$parentShaders">

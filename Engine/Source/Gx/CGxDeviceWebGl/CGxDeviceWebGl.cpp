@@ -83,6 +83,7 @@ static bool s_anisotropic;
 // login screen already
 static CVar* s_postSharpen;
 static CVar* s_postVibrance;
+static CVar* s_postFxaa;
 
 // The fixed-function pipeline as one program. Both stages declare the same uniform block (see CGxDeviceWebGl::Uniforms).
 static const char* s_uniformBlock = R"(#version 300 es
@@ -511,6 +512,7 @@ int32_t CGxDeviceWebGl::IDevAttachGlContext(const CGxFormat& format) {
 
     s_postSharpen = CVar::Register("postSharpen", "Sharpen the 3D world, 0 (off) to 1", 1, "0.5", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
     s_postVibrance = CVar::Register("postVibrance", "Liven up muted colours of the 3D world, 0 (off) to 1", 1, "0.25", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
+    s_postFxaa = CVar::Register("postFxaa", "Smooth jagged edges of the 3D world (FXAA): 0 or 1", 1, "1", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
     this->m_program = CreateProgram();
     glGenBuffers(1, &this->m_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, this->m_ubo);
@@ -1870,7 +1872,7 @@ void CGxDeviceWebGl::DeviceUnk83(uint32_t a, uint32_t b) {
 }
 
 // wow335modding: a pass over the finished 3D world, before the UI is drawn on it (CGWorldFrame::OnWorldRender):
-// bloom (the client's own glow needs pixel shaders this device does not run), contrast-adaptive sharpening (after
+// FXAA, bloom (the client's own glow needs pixel shaders this device does not run), contrast-adaptive sharpening (after
 // AMD's CAS: flat areas get more, edges less, so no halos) and vibrance (muted colours gain saturation, saturated
 // ones hardly). One copy of the screen, three small passes at a quarter of its size for the bloom, and one full-screen
 // triangle.
@@ -1918,14 +1920,38 @@ static const char* s_postFragmentShader = R"(#version 300 es
 precision mediump float;
 uniform sampler2D u_scene;
 uniform sampler2D u_bloom;
-uniform vec3 u_params; // sharpness 0-1, vibrance, bloom strength
+uniform vec4 u_params; // sharpness 0-1, vibrance, bloom strength, FXAA on
 out vec4 o_color;
 vec3 At(ivec2 p) {
     return texelFetch(u_scene, clamp(p, ivec2(0), textureSize(u_scene, 0) - 1), 0).rgb;
 }
+// FXAA in its compact form (after Timothy Lottes): the luma of the four diagonal neighbours gives the edge's direction,
+// and two blends along it replace the pixel, unless they overshoot the neighbourhood's range.
+vec3 Fxaa(vec3 m) {
+    vec2 texel = 1.0 / vec2(textureSize(u_scene, 0));
+    vec2 uv = gl_FragCoord.xy * texel;
+    vec3 toLuma = vec3(0.299, 0.587, 0.114);
+    float nw = dot(texture(u_scene, uv + vec2(-1.0, -1.0) * texel).rgb, toLuma);
+    float ne = dot(texture(u_scene, uv + vec2(1.0, -1.0) * texel).rgb, toLuma);
+    float sw = dot(texture(u_scene, uv + vec2(-1.0, 1.0) * texel).rgb, toLuma);
+    float se = dot(texture(u_scene, uv + vec2(1.0, 1.0) * texel).rgb, toLuma);
+    float lm = dot(m, toLuma);
+    float lo = min(lm, min(min(nw, ne), min(sw, se)));
+    float hi = max(lm, max(max(nw, ne), max(sw, se)));
+    vec2 dir = vec2(-((nw + ne) - (sw + se)), (nw + sw) - (ne + se));
+    float reduce = max((nw + ne + sw + se) * 0.03125, 1.0 / 128.0);
+    dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + reduce), -8.0, 8.0) * texel;
+    vec3 a = 0.5 * (texture(u_scene, uv - dir / 6.0).rgb + texture(u_scene, uv + dir / 6.0).rgb);
+    vec3 b = a * 0.5 + 0.25 * (texture(u_scene, uv - dir * 0.5).rgb + texture(u_scene, uv + dir * 0.5).rgb);
+    float lb = dot(b, toLuma);
+    return lb < lo || lb > hi ? a : b;
+}
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
     vec3 e = At(p);
+    if (u_params.w > 0.0) {
+        e = Fxaa(e);
+    }
     vec3 b = At(p + ivec2(0, 1));
     vec3 d = At(p + ivec2(-1, 0));
     vec3 f = At(p + ivec2(1, 0));
@@ -1970,13 +1996,14 @@ static void SizePostTexture(GLuint texture, int32_t width, int32_t height) {
 void CGxDeviceWebGl::PostProcessWorld(float glow) {
     float sharpen = s_postSharpen->m_floatValue;
     float vibrance = s_postVibrance->m_floatValue;
+    float fxaa = s_postFxaa->m_intValue ? 1.0f : 0.0f;
     float bloom = glow * 0.6f; // ponytail: one strength for every zone's glow value; a setting if it needs tuning
 
     GLint drawFbo = 0;
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
 
     // only the screen, never a texture the world was drawn into
-    if ((sharpen <= 0.0f && vibrance <= 0.0f && bloom <= 0.0f) || drawFbo != 0) {
+    if ((sharpen <= 0.0f && vibrance <= 0.0f && bloom <= 0.0f && fxaa <= 0.0f) || drawFbo != 0) {
         return;
     }
 
@@ -2083,7 +2110,7 @@ void CGxDeviceWebGl::PostProcessWorld(float glow) {
     glActiveTexture(GL_TEXTURE0);
     glViewport(0, 0, width, height);
     glUseProgram(s_program);
-    glUniform3f(s_paramsLocation, sharpen < 1.0f ? sharpen : 1.0f, vibrance, bloom);
+    glUniform4f(s_paramsLocation, sharpen < 1.0f ? sharpen : 1.0f, vibrance, bloom, fxaa);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
     glBindTexture(GL_TEXTURE_2D, texture0);
