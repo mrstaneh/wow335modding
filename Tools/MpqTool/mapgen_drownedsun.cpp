@@ -109,26 +109,43 @@ struct Open {
     bool passage;
 };
 
+// Where open spaces overlap (a passage starting inside a room, two segments at a bend) the point belongs to the one it
+// is deepest inside, so the floor hands over where both have the same height instead of stepping.
 Open Nearest(float x, float y) {
-    Open best = { 1e9f, 0, ZONE, false };
+    float best = 1e9f; // signed: distance outside the space, negative inside
+    Open open = { 0, 0, ZONE, false };
     for (const Room& room : ROOMS) {
-        float d = std::max(0.0f, Distance(room.at, x, y) - room.radius);
-        if (d < best.outside) {
-            best = { d, room.z, room.area, false };
+        float d = Distance(room.at, x, y) - room.radius;
+        if (d < best) {
+            best = d;
+            open = { 0, room.z, room.area, false };
         }
     }
+    // Inside a bend the floors of the two segments differ a little; blending them by depth keeps it a slope.
     for (const Passage& p : PASSAGES) {
+        float nearest = 1e9f, nearestFloor = 0, weighted = 0, weights = 0;
         for (size_t i = 0; i + 1 < p.points.size(); i++) {
             Point a = p.points[i], b = p.points[i + 1];
             float dx = b.x - a.x, dy = b.y - a.y;
             float t = Clamp01(((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy));
-            float d = std::max(0.0f, Distance({ a.x + t * dx, a.y + t * dy }, x, y) - p.halfWidth);
-            if (d < best.outside) {
-                best = { d, Lerp(p.z[i], p.z[i + 1], t), p.area, true };
+            float d = Distance({ a.x + t * dx, a.y + t * dy }, x, y) - p.halfWidth;
+            float floor = Lerp(p.z[i], p.z[i + 1], t);
+            if (d < nearest) {
+                nearest = d;
+                nearestFloor = floor;
+            }
+            if (d < 0) {
+                weighted += -d * floor;
+                weights += -d;
             }
         }
+        if (nearest < best) {
+            best = nearest;
+            open = { 0, weights > 0 ? weighted / weights : nearestFloor, p.area, true };
+        }
     }
-    return best;
+    open.outside = std::max(0.0f, best);
+    return open;
 }
 
 float Height(float x, float y) {
@@ -347,6 +364,41 @@ void Rows(Dbcs& dbcs) {
     difficulties.Put(difficulty);
 }
 
+// From the Sun Court through each wing to its last room, along the middle of the passages.
+const std::vector<std::vector<Point>> ROUTES = {
+    { { 0, 0 }, { 0, -46 }, { 0, -85 }, { 0, -115 }, { 0, -145 }, { 0, -161 }, { 0, -205 } },
+    { { 0, 0 }, { -46, 0 }, { -173, 0 }, { -215, 0 } },
+    { { 0, 0 }, { 0, 46 }, { 0, 84 }, { 0, 112 }, { 0, 140 }, { 0, 162 }, { 0, 200 } },
+    { { 0, 0 }, { 46, 0 }, { 80, 25 }, { 115, -15 }, { 150, 15 }, { 190, 0 }, { 235, 0 } },
+    { { 0, 0 }, { 34, 34 }, { 95, 95 }, { 125, 125 } },
+};
+const float WALKABLE = 0.9f; // rise per yard: about 42 degrees, below what the server lets players walk up
+
+// Walks every route every half yard, down its middle and 3 yards either side, and reports any step too steep to walk.
+// Returns the number of steep places.
+int CheckRoutes() {
+    int steep = 0;
+    for (const auto& route : ROUTES) {
+        for (size_t i = 0; i + 1 < route.size(); i++) {
+            Point a = route[i], b = route[i + 1];
+            float length = Distance(a, b.x, b.y);
+            float sx = -(b.y - a.y) / length, sy = (b.x - a.x) / length; // sideways
+            for (float side : { -3.0f, 0.0f, 3.0f }) {
+                float last = Height(a.x + sx * side, a.y + sy * side);
+                for (float d = 0.5f; d <= length; d += 0.5f) {
+                    float x = Lerp(a.x, b.x, d / length) + sx * side, y = Lerp(a.y, b.y, d / length) + sy * side;
+                    float h = Height(x, y);
+                    if (std::abs(h - last) / 0.5f > WALKABLE && steep++ < 10) {
+                        printf("  too steep to walk at %.1f %.1f (rise %.2f per yard)\n", x, y, std::abs(h - last) / 0.5f);
+                    }
+                    last = h;
+                }
+            }
+        }
+    }
+    return steep;
+}
+
 } // namespace
 
 MapSpec DrownedSun() {
@@ -370,5 +422,7 @@ MapSpec DrownedSun() {
     for (const Room& room : ROOMS) {
         printf("  room at %.0f %.0f floor %.2f\n", room.at.x, room.at.y, Height(room.at.x, room.at.y));
     }
+    int steep = CheckRoutes();
+    printf(steep ? "  %d places on the routes are too steep to walk\n" : "  every wing walkable from the Sun Court\n", steep);
     return spec;
 }
