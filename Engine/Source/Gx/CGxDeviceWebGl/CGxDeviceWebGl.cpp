@@ -15,6 +15,7 @@
 #include "Engine/Source/Gx/CGxDeviceWebGl/CGxDeviceWebGl.h"
 #include "Engine/Source/BlizzardCore/Source/System/File/Web/WebFile.h"
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
+#include "Engine/Source/ConsoleBase/Types.h"
 #include "Engine/Source/Gx/CGxBuf.h"
 #include "Engine/Source/Gx/CGxPool.h"
 #include "Engine/Source/Gx/CGxTex.h"
@@ -1860,6 +1861,138 @@ void CGxDeviceWebGl::DeviceUnk82() {
 }
 
 void CGxDeviceWebGl::DeviceUnk83(uint32_t a, uint32_t b) {
+}
+
+// wow335modding: a pass over the finished 3D world, before the UI is drawn on it (CGWorldFrame::OnWorldRender):
+// contrast-adaptive sharpening (after AMD's CAS: flat areas get more, edges less, so no halos) and vibrance (muted
+// colours gain saturation, saturated ones hardly). One copy of the screen and one full-screen triangle.
+static const char* s_postVertexShader = R"(#version 300 es
+void main() {
+    vec2 p = vec2(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0);
+    gl_Position = vec4(p, 0.0, 1.0);
+}
+)";
+
+static const char* s_postFragmentShader = R"(#version 300 es
+precision mediump float;
+uniform sampler2D u_scene;
+uniform vec2 u_params; // sharpness 0-1, vibrance
+out vec4 o_color;
+vec3 At(ivec2 p) {
+    return texelFetch(u_scene, clamp(p, ivec2(0), textureSize(u_scene, 0) - 1), 0).rgb;
+}
+void main() {
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    vec3 e = At(p);
+    vec3 b = At(p + ivec2(0, 1));
+    vec3 d = At(p + ivec2(-1, 0));
+    vec3 f = At(p + ivec2(1, 0));
+    vec3 h = At(p + ivec2(0, -1));
+    vec3 lo = min(e, min(min(b, d), min(f, h)));
+    vec3 hi = max(e, max(max(b, d), max(f, h)));
+    vec3 amount = sqrt(clamp(min(lo, 1.0 - hi) / max(hi, 1e-4), 0.0, 1.0));
+    vec3 w = amount * mix(-0.125, -0.2, u_params.x) * step(1e-3, u_params.x);
+    vec3 c = clamp((e + (b + d + f + h) * w) / (1.0 + 4.0 * w), 0.0, 1.0);
+    float luma = dot(c, vec3(0.299, 0.587, 0.114));
+    float saturation = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+    c = clamp(mix(vec3(luma), c, 1.0 + u_params.y * (1.0 - saturation)), 0.0, 1.0);
+    o_color = vec4(c, 1.0);
+}
+)";
+
+void CGxDeviceWebGl::PostProcessWorld() {
+    static CVar* s_sharpen = CVar::Register("postSharpen", "Sharpen the 3D world, 0 (off) to 1", 1, "0.5", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
+    static CVar* s_vibrance = CVar::Register("postVibrance", "Liven up muted colours of the 3D world, 0 (off) to 1", 1, "0.25", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
+    float sharpen = s_sharpen->m_floatValue;
+    float vibrance = s_vibrance->m_floatValue;
+
+    GLint drawFbo = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
+
+    // only the screen, never a texture the world was drawn into
+    if ((sharpen <= 0.0f && vibrance <= 0.0f) || drawFbo != 0) {
+        return;
+    }
+
+    static GLuint s_program;
+    static GLint s_paramsLocation;
+    static GLuint s_vao;
+    static GLuint s_texture;
+    static int32_t s_width;
+    static int32_t s_height;
+
+    if (!s_program) {
+        s_program = glCreateProgram();
+        GLuint vs = CompileShader(GL_VERTEX_SHADER, s_postVertexShader);
+        GLuint fs = CompileShader(GL_FRAGMENT_SHADER, s_postFragmentShader);
+        glAttachShader(s_program, vs);
+        glAttachShader(s_program, fs);
+        glLinkProgram(s_program);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        s_paramsLocation = glGetUniformLocation(s_program, "u_params");
+        glGenVertexArrays(1, &s_vao);
+    }
+
+    // What the pass changes, to put back afterwards: the device keeps its own idea of this state.
+    GLint program, vao, activeTexture, texture, readFbo, viewport[4];
+    GLboolean colorMask[4];
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo);
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    glGetBooleanv(GL_COLOR_WRITEMASK, colorMask);
+    GLboolean blend = glIsEnabled(GL_BLEND);
+    GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
+    GLboolean cull = glIsEnabled(GL_CULL_FACE);
+    GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
+
+    int32_t width;
+    int32_t height;
+    CanvasSize(width, height);
+
+    if (!s_texture || width != s_width || height != s_height) {
+        if (!s_texture) {
+            glGenTextures(1, &s_texture);
+        }
+
+        glBindTexture(GL_TEXTURE_2D, s_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        s_width = width;
+        s_height = height;
+    }
+
+    glBindTexture(GL_TEXTURE_2D, s_texture);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+
+    glUseProgram(s_program);
+    glUniform2f(s_paramsLocation, sharpen < 1.0f ? sharpen : 1.0f, vibrance);
+    glBindVertexArray(s_vao);
+    glViewport(0, 0, width, height);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glActiveTexture(activeTexture);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
+    glUseProgram(program);
+    glBindVertexArray(vao);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+    glColorMask(colorMask[0], colorMask[1], colorMask[2], colorMask[3]);
+    (blend ? glEnable : glDisable)(GL_BLEND);
+    (depthTest ? glEnable : glDisable)(GL_DEPTH_TEST);
+    (cull ? glEnable : glDisable)(GL_CULL_FACE);
+    (scissor ? glEnable : glDisable)(GL_SCISSOR_TEST);
 }
 
 #endif

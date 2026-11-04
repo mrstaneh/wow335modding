@@ -88,6 +88,9 @@
 #include <cfloat>
 #include <cmath>
 #include "WoW/Source/Ui/SpellBookFrame.h"
+#if defined(WOWDECOMP_PLATFORM_WEB)
+#include "Engine/Source/Gx/CGxDeviceWebGl/CGxDeviceWebGl.h"
+#endif
 
 // STATIC: 0x009F9864
 static const uint32_t s_skinCursorModes[2] = { 21, 20 };
@@ -1803,6 +1806,10 @@ void CGWorldFrame::OnWorldRender() {
     CGChatBubbleFrame::OnWorldRender(this);
     GxXformSetViewport(minX, maxX, minY, maxY, minZ, maxZ);
     FFX::Finish();
+#if defined(WOWDECOMP_PLATFORM_WEB)
+    // wow335modding: sharpening and vibrance on the world, under the UI that is drawn next
+    static_cast<CGxDeviceWebGl*>(g_theGxDevicePtr)->PostProcessWorld();
+#endif
     CVehiclePassenger_C::PostRenderUpdateAll();
 }
 
