@@ -16,5 +16,5 @@ target_link_libraries(MpqTool PRIVATE storm)
 # CMake links storm itself; stop StormLib.h from #pragma-linking a prebuilt StormLibRAD.lib
 target_compile_definitions(MpqTool PRIVATE __STORMLIB_NO_STATIC_LINK__)
 
-add_executable(MapGen mapgen.cpp)
+add_executable(MapGen mapgen.cpp mapgen_testmap.cpp mapgen_drownedsun.cpp)
 target_compile_features(MapGen PRIVATE cxx_std_17)

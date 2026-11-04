@@ -11,7 +11,8 @@ set -euo pipefail
 DATA=${DATA:-bin/Win/Data}
 LOCALE=${LOCALE:-enUS}
 AC=${AC:-../azerothcore-wotlk/build/bin/RelWithDebInfo}
-MAP_IDS="800" # keep in sync with Tools/MpqTool/mapgen.cpp
+MAP_IDS="800 801" # keep in sync with Tools/MpqTool/mapgen_*.cpp
+DBCS="Map AreaTable MapDifficulty" # the DBCs MapGen adds rows to
 TOOL=build/MpqTool/Release/MpqTool.exe
 MAPGEN=build/MpqTool/Release/MapGen.exe
 PATCH=Mods/interface.patch
@@ -60,10 +61,12 @@ build)
     done
     patch -s -p1 -d "$WORK/work" < "$PATCH"
     # Generated files go into a copy, so work only ever holds hand edits
-    extract 'DBFilesClient\Map.dbc'
+    for dbc in $DBCS; do
+        extract "DBFilesClient\\$dbc.dbc"
+    done
     rm -rf "$WORK/pack"
     cp -r "$WORK/work" "$WORK/pack"
-    "$MAPGEN" "$WORK/pack" "$WORK/orig/DBFilesClient/Map.dbc"
+    "$MAPGEN" "$WORK/pack" "$WORK/orig/DBFilesClient"
     rm -f "$WORK/patch.MPQ"
     "$TOOL" pack "$WORK/patch.MPQ" "$WORK/pack"
     cp "$WORK/patch.MPQ" "$DATA/$LOCALE/patch-$LOCALE-4.MPQ"
@@ -71,8 +74,10 @@ build)
     ;;
 server)
     [ -f "$WORK/pack/DBFilesClient/Map.dbc" ] || { echo "run '$0 build' first"; exit 1; }
-    [ -e "$AC/data/dbc/Map.dbc.orig" ] || cp "$AC/data/dbc/Map.dbc" "$AC/data/dbc/Map.dbc.orig"
-    cp "$WORK/pack/DBFilesClient/Map.dbc" "$AC/data/dbc/Map.dbc"
+    for dbc in $DBCS; do
+        [ -e "$AC/data/dbc/$dbc.dbc.orig" ] || cp "$AC/data/dbc/$dbc.dbc" "$AC/data/dbc/$dbc.dbc.orig"
+        cp "$WORK/pack/DBFilesClient/$dbc.dbc" "$AC/data/dbc/$dbc.dbc"
+    done
     # Terrain (maps) and collision of buildings and doodads (vmaps), only for our maps (-m is our extractor patch)
     for id in $MAP_IDS; do
         rm -rf "$WORK/extract"
