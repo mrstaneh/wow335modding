@@ -90,6 +90,12 @@ server)
         (cd "$WORK/extract" && "$ac/vmap4_extractor.exe" -d "$data" -m "$id" > vmap.log && "$ac/vmap4_assembler.exe" Buildings vmaps > assemble.log)
         cp "$WORK/extract/vmaps/"* "$AC/data/vmaps/"
     done
+    # The raid's scripts: AzerothCore builds every module in its modules folder, so ours is linked in there (a
+    # junction). Rebuild worldserver after changing them, or the first time: cmake <AC build dir>, then build it.
+    modules="$AC/../../../modules"
+    if [ ! -e "$modules/mod-drowned-sun" ]; then
+        powershell -NoProfile -Command "New-Item -ItemType Junction -Path '$(cygpath -w "$modules")\\mod-drowned-sun' -Target '$(cygpath -w "$PWD/Mods/DrownedSun/mod-drowned-sun")'" > /dev/null
+    fi
     for sql in Mods/sql/*.sql; do
         docker exec -i -e MYSQL_PWD=acore ac-mysql mysql -uacore acore_world < "$sql"
     done

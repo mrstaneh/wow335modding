@@ -98,6 +98,9 @@ const std::vector<Passage> PASSAGES = {
     { { { 34, 34 }, { 95, 95 } }, { 20, -10 }, 8, SANCTUM },      // the stair down
 };
 
+// Where the Sluices' three wheels stand around its edge (degrees, 0 north, 90 west), clear of the ways in and out.
+const float SLUICE_WHEELS[] = { 35, 140, 190 }; // between the palms (Doodads: every 51 degrees from 10)
+
 // Dry stone islands in Sebekhti's basin.
 const Point ISLANDS[] = { { 18, -190 }, { -20, -195 }, { 5, -228 } };
 const float ISLAND_RADIUS = 6;
@@ -683,5 +686,13 @@ MapSpec DrownedSun() {
     }
     int steep = CheckRoutes();
     printf(steep ? "  %d places on the routes are too steep to walk\n" : "  every wing walkable from the Sun Court\n", steep);
+    // Spawn points for Mods/sql/drownedsun.sql: the Sluices' wheels stand on the dry ledge.
+    for (float a : SLUICE_WHEELS) {
+        Point p = AtEdge(ROOMS[1], a, 4);
+        printf("  sluice wheel at %.1f %.1f %.2f\n", p.x, p.y, Height(p.x, p.y));
+    }
+    for (Point island : ISLANDS) {
+        printf("  island at %.1f %.1f %.2f\n", island.x, island.y, Height(island.x, island.y));
+    }
     return spec;
 }
