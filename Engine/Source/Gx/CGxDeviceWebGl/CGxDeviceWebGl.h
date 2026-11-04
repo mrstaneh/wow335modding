@@ -121,8 +121,9 @@ class CGxDeviceWebGl : public CGxDevice {
     void IXformGLModelView(const C44Matrix& view, C44Matrix& world);
     void IXformSetProjection(const C44Matrix& matrix);
     void SetAttribEnabled(GLuint location, bool enabled);
-    // wow335modding: sharpening and vibrance over the finished 3D world (postSharpen, postVibrance)
-    void PostProcessWorld();
+    // wow335modding: bloom, sharpening and vibrance over the finished 3D world (glow 0 = no bloom; postSharpen,
+    // postVibrance)
+    void PostProcessWorld(float glow);
 };
 
 CGxDevice* CreateCGxDeviceWebGl();

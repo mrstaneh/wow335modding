@@ -1870,8 +1870,10 @@ void CGxDeviceWebGl::DeviceUnk83(uint32_t a, uint32_t b) {
 }
 
 // wow335modding: a pass over the finished 3D world, before the UI is drawn on it (CGWorldFrame::OnWorldRender):
-// contrast-adaptive sharpening (after AMD's CAS: flat areas get more, edges less, so no halos) and vibrance (muted
-// colours gain saturation, saturated ones hardly). One copy of the screen and one full-screen triangle.
+// bloom (the client's own glow needs pixel shaders this device does not run), contrast-adaptive sharpening (after
+// AMD's CAS: flat areas get more, edges less, so no halos) and vibrance (muted colours gain saturation, saturated
+// ones hardly). One copy of the screen, three small passes at a quarter of its size for the bloom, and one full-screen
+// triangle.
 static const char* s_postVertexShader = R"(#version 300 es
 void main() {
     vec2 p = vec2(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0);
@@ -1879,10 +1881,44 @@ void main() {
 }
 )";
 
+// A quarter of the screen: each pixel the average of the 4x4 it covers (four bilinear taps), squared so bright areas
+// carry the glow, as the client's glow does.
+static const char* s_bloomDownShader = R"(#version 300 es
+precision mediump float;
+uniform sampler2D u_src;
+out vec4 o_color;
+void main() {
+    vec2 texel = 1.0 / vec2(textureSize(u_src, 0));
+    vec2 uv = gl_FragCoord.xy * 4.0 * texel;
+    vec3 c = 0.25 * (texture(u_src, uv + texel * vec2(-1.0, -1.0)).rgb + texture(u_src, uv + texel * vec2(1.0, -1.0)).rgb
+                   + texture(u_src, uv + texel * vec2(-1.0, 1.0)).rgb + texture(u_src, uv + texel * vec2(1.0, 1.0)).rgb);
+    o_color = vec4(c * c, 1.0);
+}
+)";
+
+// One direction of a 9-tap Gaussian, in five bilinear taps.
+static const char* s_bloomBlurShader = R"(#version 300 es
+precision mediump float;
+uniform sampler2D u_src;
+uniform vec2 u_dir;
+out vec4 o_color;
+void main() {
+    vec2 size = vec2(textureSize(u_src, 0));
+    vec2 uv = gl_FragCoord.xy / size;
+    vec2 step1 = u_dir * 1.3846153846 / size;
+    vec2 step2 = u_dir * 3.2307692308 / size;
+    vec3 c = texture(u_src, uv).rgb * 0.2270270270
+           + (texture(u_src, uv + step1).rgb + texture(u_src, uv - step1).rgb) * 0.3162162162
+           + (texture(u_src, uv + step2).rgb + texture(u_src, uv - step2).rgb) * 0.0702702703;
+    o_color = vec4(c, 1.0);
+}
+)";
+
 static const char* s_postFragmentShader = R"(#version 300 es
 precision mediump float;
 uniform sampler2D u_scene;
-uniform vec2 u_params; // sharpness 0-1, vibrance
+uniform sampler2D u_bloom;
+uniform vec3 u_params; // sharpness 0-1, vibrance, bloom strength
 out vec4 o_color;
 vec3 At(ivec2 p) {
     return texelFetch(u_scene, clamp(p, ivec2(0), textureSize(u_scene, 0) - 1), 0).rgb;
@@ -1899,6 +1935,9 @@ void main() {
     vec3 amount = sqrt(clamp(min(lo, 1.0 - hi) / max(hi, 1e-4), 0.0, 1.0));
     vec3 w = amount * mix(-0.125, -0.2, u_params.x) * step(1e-3, u_params.x);
     vec3 c = clamp((e + (b + d + f + h) * w) / (1.0 + 4.0 * w), 0.0, 1.0);
+    if (u_params.z > 0.0) {
+        c = clamp(c + texture(u_bloom, gl_FragCoord.xy / vec2(textureSize(u_scene, 0))).rgb * u_params.z, 0.0, 1.0);
+    }
     float luma = dot(c, vec3(0.299, 0.587, 0.114));
     float saturation = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
     c = clamp(mix(vec3(luma), c, 1.0 + u_params.y * (1.0 - saturation)), 0.0, 1.0);
@@ -1906,40 +1945,55 @@ void main() {
 }
 )";
 
-void CGxDeviceWebGl::PostProcessWorld() {
+static GLuint LinkPostProgram(const char* fragment) {
+    GLuint program = glCreateProgram();
+    GLuint vs = CompileShader(GL_VERTEX_SHADER, s_postVertexShader);
+    GLuint fs = CompileShader(GL_FRAGMENT_SHADER, fragment);
+    glAttachShader(program, vs);
+    glAttachShader(program, fs);
+    glLinkProgram(program);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    return program;
+}
+
+// An RGBA8 texture of this size with linear filtering, clamped, for the passes to read and write.
+static void SizePostTexture(GLuint texture, int32_t width, int32_t height) {
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
+void CGxDeviceWebGl::PostProcessWorld(float glow) {
     float sharpen = s_postSharpen->m_floatValue;
     float vibrance = s_postVibrance->m_floatValue;
+    float bloom = glow * 0.6f; // ponytail: one strength for every zone's glow value; a setting if it needs tuning
 
     GLint drawFbo = 0;
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
 
     // only the screen, never a texture the world was drawn into
-    if ((sharpen <= 0.0f && vibrance <= 0.0f) || drawFbo != 0) {
+    if ((sharpen <= 0.0f && vibrance <= 0.0f && bloom <= 0.0f) || drawFbo != 0) {
         return;
     }
 
     static GLuint s_program;
     static GLint s_paramsLocation;
+    static GLuint s_downProgram;
+    static GLuint s_blurProgram;
+    static GLint s_dirLocation;
     static GLuint s_vao;
-    static GLuint s_texture;
+    static GLuint s_scene;
+    static GLuint s_bloom[2];
+    static GLuint s_bloomFbo[2];
     static int32_t s_width;
     static int32_t s_height;
 
-    if (!s_program) {
-        s_program = glCreateProgram();
-        GLuint vs = CompileShader(GL_VERTEX_SHADER, s_postVertexShader);
-        GLuint fs = CompileShader(GL_FRAGMENT_SHADER, s_postFragmentShader);
-        glAttachShader(s_program, vs);
-        glAttachShader(s_program, fs);
-        glLinkProgram(s_program);
-        glDeleteShader(vs);
-        glDeleteShader(fs);
-        s_paramsLocation = glGetUniformLocation(s_program, "u_params");
-        glGenVertexArrays(1, &s_vao);
-    }
-
-    // What the pass changes, to put back afterwards: the device keeps its own idea of this state.
-    GLint program, vao, activeTexture, texture, readFbo, viewport[4];
+    // What the passes change, to put back afterwards: the device keeps its own idea of this state.
+    GLint program, vao, activeTexture, texture0, texture1, readFbo, viewport[4];
     GLboolean colorMask[4];
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
@@ -1951,42 +2005,90 @@ void CGxDeviceWebGl::PostProcessWorld() {
     GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
     GLboolean cull = glIsEnabled(GL_CULL_FACE);
     GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+    glActiveTexture(GL_TEXTURE1);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture1);
     glActiveTexture(GL_TEXTURE0);
-    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture0);
+
+    // after saving the state: this binds a program of its own
+    if (!s_program) {
+        s_program = LinkPostProgram(s_postFragmentShader);
+        s_paramsLocation = glGetUniformLocation(s_program, "u_params");
+        glUseProgram(s_program);
+        glUniform1i(glGetUniformLocation(s_program, "u_scene"), 0);
+        glUniform1i(glGetUniformLocation(s_program, "u_bloom"), 1);
+        s_downProgram = LinkPostProgram(s_bloomDownShader);
+        s_blurProgram = LinkPostProgram(s_bloomBlurShader);
+        s_dirLocation = glGetUniformLocation(s_blurProgram, "u_dir");
+        glGenVertexArrays(1, &s_vao);
+        glGenTextures(1, &s_scene);
+        glGenTextures(2, s_bloom);
+        glGenFramebuffers(2, s_bloomFbo);
+    }
 
     int32_t width;
     int32_t height;
     CanvasSize(width, height);
+    int32_t quarterWidth = width / 4 > 1 ? width / 4 : 1;
+    int32_t quarterHeight = height / 4 > 1 ? height / 4 : 1;
 
-    if (!s_texture || width != s_width || height != s_height) {
-        if (!s_texture) {
-            glGenTextures(1, &s_texture);
+    if (width != s_width || height != s_height) {
+        SizePostTexture(s_scene, width, height);
+
+        for (uint32_t i = 0; i < 2; i++) {
+            SizePostTexture(s_bloom[i], quarterWidth, quarterHeight);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_bloomFbo[i]);
+            glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_bloom[i], 0);
         }
 
-        glBindTexture(GL_TEXTURE_2D, s_texture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         s_width = width;
         s_height = height;
     }
 
-    glBindTexture(GL_TEXTURE_2D, s_texture);
+    glBindTexture(GL_TEXTURE_2D, s_scene);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
 
-    glUseProgram(s_program);
-    glUniform2f(s_paramsLocation, sharpen < 1.0f ? sharpen : 1.0f, vibrance);
     glBindVertexArray(s_vao);
-    glViewport(0, 0, width, height);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glDisable(GL_SCISSOR_TEST);
+
+    if (bloom > 0.0f) {
+        // the screen down into bloom 0, blurred across into bloom 1 and back down into bloom 0
+        glViewport(0, 0, quarterWidth, quarterHeight);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_bloomFbo[0]);
+        glUseProgram(s_downProgram);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        glUseProgram(s_blurProgram);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_bloomFbo[1]);
+        glBindTexture(GL_TEXTURE_2D, s_bloom[0]);
+        glUniform2f(s_dirLocation, 1.0f, 0.0f);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_bloomFbo[0]);
+        glBindTexture(GL_TEXTURE_2D, s_bloom[1]);
+        glUniform2f(s_dirLocation, 0.0f, 1.0f);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBindTexture(GL_TEXTURE_2D, s_scene);
+    }
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, s_bloom[0]);
+    glActiveTexture(GL_TEXTURE0);
+    glViewport(0, 0, width, height);
+    glUseProgram(s_program);
+    glUniform3f(s_paramsLocation, sharpen < 1.0f ? sharpen : 1.0f, vibrance, bloom);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindTexture(GL_TEXTURE_2D, texture0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture1);
     glActiveTexture(activeTexture);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
     glUseProgram(program);

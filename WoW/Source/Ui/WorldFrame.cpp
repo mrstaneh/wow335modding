@@ -1807,8 +1807,11 @@ void CGWorldFrame::OnWorldRender() {
     GxXformSetViewport(minX, maxX, minY, maxY, minZ, maxZ);
     FFX::Finish();
 #if defined(WOWDECOMP_PLATFORM_WEB)
-    // wow335modding: sharpening and vibrance on the world, under the UI that is drawn next
-    static_cast<CGxDeviceWebGl*>(g_theGxDevicePtr)->PostProcessWorld();
+    // wow335modding: bloom, sharpening and vibrance on the world, under the UI that is drawn next. The bloom follows
+    // the zone's glow (light parameters, as the client's own glow does) when Full Screen Glow is on.
+    static CVar* s_ffxGlow = CVar::Lookup("ffxGlow");
+    float glow = s_ffxGlow && s_ffxGlow->m_intValue ? DayNight::GetInfo()->m_bands.m_glow : 0.0f;
+    static_cast<CGxDeviceWebGl*>(g_theGxDevicePtr)->PostProcessWorld(glow);
 #endif
     CVehiclePassenger_C::PostRenderUpdateAll();
 }
