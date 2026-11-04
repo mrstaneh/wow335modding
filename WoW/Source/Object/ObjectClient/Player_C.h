@@ -464,8 +464,8 @@ int32_t ClientPlaySpellVisualHandler(WOWGUID guid, void* param);
 void EnumVisibleForAuraEffect(const SpellRec* spell, int32_t display, int32_t flags);
 uint32_t GetDisplayIdFromRaceAndGender(uint32_t race, uint32_t gender);
 CreatureModelDataRec* GetModelDataRec(uint32_t race, uint32_t gender);
-int32_t OnArenaCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, const void* value);
-int32_t OnHonorCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, const void* value);
+int32_t OnArenaCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
+int32_t OnHonorCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
 int32_t OnSummonCancel(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg);
 int32_t OnUpdatePlayerScriptEvent(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
 int32_t CritterUpdate(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
@@ -488,8 +488,8 @@ int32_t SignalCombatRatingUpdate(WOWGUID guid, uint32_t offset, uint32_t count, 
 int32_t OnUpdatePlayerRuneRegen(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
 int32_t OnUpdatePlayerTrackingMask(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
 int32_t OnUpdatePlayerNoReagentCost(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
-int32_t OnUpdatePlayerGlyph(WOWGUID guid, uint32_t offset, uint32_t count, const void* value);
-int32_t OnUpdatePlayerGlyphSlotsEnabled(WOWGUID guid, uint32_t offset, uint32_t count, const void* value);
+int32_t OnUpdatePlayerGlyph(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
+int32_t OnUpdatePlayerGlyphSlotsEnabled(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
 int32_t Packet_SMSG_SET_PROFICIENCY(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg);
 int32_t Packet_Group_9(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg);
 void OnItemPushResult(WOWGUID guid, uint8_t bag, uint32_t slot, uint32_t itemId, uint32_t suffixFactor, uint32_t randomPropertyId, uint32_t received, uint32_t created, uint32_t showInChat, uint32_t count);
@@ -573,7 +573,7 @@ void __stdcall SignalPlayerAttackEvent(int32_t unused_a1);
 void SignalPlayerSkillStatEvents();
 void PlayerSignalSkillStatChanges();
 void SendQuestGiverStatusMultipleQuery();
-int32_t SignalPetSpellPowerUpdate(WOWGUID guid);
+int32_t SignalPetSpellPowerUpdate(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param);
 
 void Spell_C_SeedMissileTrajectorySequence(uint32_t guidLow);
 

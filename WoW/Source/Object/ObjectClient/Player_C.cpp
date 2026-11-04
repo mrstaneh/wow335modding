@@ -1448,7 +1448,7 @@ void CGPlayer_C::SetPlayedTime(int32_t playedTime) {
 
 // VERIFY: 14d81fae manual
 // OFFSET: 0x006D1CB0
-int32_t SignalPetSpellPowerUpdate(WOWGUID guid) {
+int32_t SignalPetSpellPowerUpdate(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param) {
     if (ClntObjMgrObjectPtr(guid, TYPEMASK_PLAYER, __FILE__, __LINE__)) {
         FrameScript_SignalEvent(SCRIPT_EVENT_PET_SPELL_POWER_UPDATE, nullptr);
     }
@@ -2308,7 +2308,7 @@ int32_t CGItem::IsUsable() const {
 
 // VERIFY: f7a9f1f8 manual
 // OFFSET: 0x006DA3C0
-int32_t OnHonorCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, const void* value) {
+int32_t OnHonorCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && player->m_player->m_playerFieldHonorCurrency < *static_cast<const uint32_t*>(value)) {
@@ -2323,7 +2323,7 @@ int32_t OnHonorCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, co
 
 // VERIFY: d617a5c3 manual
 // OFFSET: 0x006DA430
-int32_t OnArenaCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, const void* value) {
+int32_t OnArenaCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && player->m_player->m_playerFieldArenaCurrency < *static_cast<const uint32_t*>(value)) {
@@ -2338,7 +2338,7 @@ int32_t OnArenaCurrencyChanged(WOWGUID guid, uint32_t offset, uint32_t count, co
 
 // VERIFY: fa2916ef manual
 // OFFSET: 0x006DAA80
-int32_t OnUpdatePlayerGlyph(WOWGUID guid, uint32_t offset, uint32_t count, const void* value) {
+int32_t OnUpdatePlayerGlyph(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(guid, TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (!player) {
@@ -2362,7 +2362,7 @@ int32_t OnUpdatePlayerGlyph(WOWGUID guid, uint32_t offset, uint32_t count, const
 
 // VERIFY: 22efc675 manual
 // OFFSET: 0x006DAB80
-int32_t OnUpdatePlayerGlyphSlotsEnabled(WOWGUID guid, uint32_t offset, uint32_t count, const void* value) {
+int32_t OnUpdatePlayerGlyphSlotsEnabled(WOWGUID guid, uint32_t offset, uint32_t count, const void* value, void* param) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(guid, TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -7231,8 +7231,8 @@ void CGPlayer_C::SetActiveMirrorHandlers() {
     ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x10E4, 2, OnUpdatePlayerOverrideSpellsID, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
     ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x10E8, 4, OnUpdatePlayerScriptEvent, reinterpret_cast<void*>(static_cast<uintptr_t>(SCRIPT_EVENT_UPDATE_FACTION)), static_cast<HANDLER_PRIORITY>(0), 0);
     ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1150, 0x54, OnArenaTeamsChanged, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x11A4, 4, reinterpret_cast<MIRRORHANDLERFUNC>(OnHonorCurrencyChanged), nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x11A8, 4, reinterpret_cast<MIRRORHANDLERFUNC>(OnArenaCurrencyChanged), nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
+    ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x11A4, 4, OnHonorCurrencyChanged, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
+    ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x11A8, 4, OnArenaCurrencyChanged, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
     ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x10EC, 0x64, SignalCombatRatingUpdate, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
     ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0xDEC, 4, SignalCombatRatingUpdate, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
     ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0xDB0, 0x34, OnUpdatePlayerScriptEvent, reinterpret_cast<void*>(static_cast<uintptr_t>(SCRIPT_EVENT_PLAYER_DAMAGE_DONE_MODS)), static_cast<HANDLER_PRIORITY>(0), 0);
@@ -7248,11 +7248,11 @@ void CGPlayer_C::SetActiveMirrorHandlers() {
     ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1224, 0xC, OnUpdatePlayerNoReagentCost, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
 
     for (uint32_t i = 0x1248; i < 0x1260; i += 4) {
-        ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, i, 4, reinterpret_cast<MIRRORHANDLERFUNC>(OnUpdatePlayerGlyph), nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
+        ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, i, 4, OnUpdatePlayerGlyph, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
     }
 
-    ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1260, 4, reinterpret_cast<MIRRORHANDLERFUNC>(OnUpdatePlayerGlyphSlotsEnabled), nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1264, 4, reinterpret_cast<MIRRORHANDLERFUNC>(SignalPetSpellPowerUpdate), nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
+    ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1260, 4, OnUpdatePlayerGlyphSlotsEnabled, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
+    ClntObjMgrSetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1264, 4, SignalPetSpellPowerUpdate, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
 }
 
 // VERIFY: 7c2e2f8b manual
@@ -7326,8 +7326,8 @@ void CGPlayer_C::UnsetActiveMirrorHandlers() {
     ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x10E4, OnUpdatePlayerOverrideSpellsID, nullptr);
     ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x10E8, OnUpdatePlayerScriptEvent, reinterpret_cast<void*>(static_cast<uintptr_t>(SCRIPT_EVENT_UPDATE_FACTION)));
     ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1150, OnArenaTeamsChanged, nullptr);
-    ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x11A4, reinterpret_cast<MIRRORHANDLERFUNC>(OnHonorCurrencyChanged), nullptr);
-    ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x11A8, reinterpret_cast<MIRRORHANDLERFUNC>(OnArenaCurrencyChanged), nullptr);
+    ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x11A4, OnHonorCurrencyChanged, nullptr);
+    ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x11A8, OnArenaCurrencyChanged, nullptr);
     ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x10EC, SignalCombatRatingUpdate, nullptr);
     ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0xDEC, SignalCombatRatingUpdate, nullptr);
     ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0xDB0, OnUpdatePlayerScriptEvent, reinterpret_cast<void*>(static_cast<uintptr_t>(SCRIPT_EVENT_PLAYER_DAMAGE_DONE_MODS)));
@@ -7343,11 +7343,11 @@ void CGPlayer_C::UnsetActiveMirrorHandlers() {
     ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1224, OnUpdatePlayerNoReagentCost, nullptr);
 
     for (uint32_t i = 0x1248; i < 0x1260; i += 4) {
-        ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, i, reinterpret_cast<MIRRORHANDLERFUNC>(OnUpdatePlayerGlyph), nullptr);
+        ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, i, OnUpdatePlayerGlyph, nullptr);
     }
 
-    ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1260, reinterpret_cast<MIRRORHANDLERFUNC>(OnUpdatePlayerGlyphSlotsEnabled), nullptr);
-    ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1264, reinterpret_cast<MIRRORHANDLERFUNC>(SignalPetSpellPowerUpdate), nullptr);
+    ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1260, OnUpdatePlayerGlyphSlotsEnabled, nullptr);
+    ClntObjMgrUnsetObjMirrorHandler(this->m_obj->m_guid, ID_PLAYER, 0x1264, SignalPetSpellPowerUpdate, nullptr);
 }
 
 struct QuestCompleteRewards {
