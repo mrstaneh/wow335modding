@@ -161,6 +161,13 @@ int32_t CGCurrencyTypes::DisplayListSortCallback(const void* a, const void* b) {
     return SStrSortUTF8I(nameA, nameB, STORM_MAX_STR);
 }
 
+// wow335modding: the item cache calls back with the item's id, the asking player and whether it arrived; the list is
+// simply rebuilt. The original passes EnterWorld itself, whose missing parameters x86 ignores but WebAssembly traps on
+// ("function signature mismatch") as soon as a currency's item info arrives.
+static void OnCurrencyItemInfo(int32_t /*id*/, const WOWGUID& /*guid*/, void* /*param*/, bool /*success*/) {
+    CGCurrencyTypes::EnterWorld();
+}
+
 // VERIFY: f01a5b7c manual
 // OFFSET: 0x005B0030
 void CGCurrencyTypes::BuildDisplayList() {
@@ -179,7 +186,7 @@ void CGCurrencyTypes::BuildDisplayList() {
     uint32_t unused2 = g_currencyTokensUnused2CVar->m_intValue;
     uint32_t backpack1 = g_currencyTokensBackpack1CVar->m_intValue;
     uint32_t backpack2 = g_currencyTokensBackpack2CVar->m_intValue;
-    auto callback = reinterpret_cast<void (*)(int32_t, const WOWGUID&, void*, bool)>(&CGCurrencyTypes::EnterWorld);
+    auto callback = &OnCurrencyItemInfo;
 
     for (int32_t category = 0; category < CGCurrencyTypes::m_numCategories; category++) {
         if (!CGCurrencyTypes::CategoryHasKnownTypes(category, known1, known2, unused1, unused2)) {
