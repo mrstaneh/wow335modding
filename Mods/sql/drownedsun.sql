@@ -76,3 +76,56 @@ INSERT INTO `gameobject_loot_template` (`Entry`, `Item`, `Reference`, `Chance`, 
 (500010, 37669, 0, 0, 0, 1, 2, 1, 1, 'Sebekhti''s Hoard - Leggings of the Stone Halls'),
 (500010, 37363, 0, 0, 0, 1, 2, 1, 1, 'Sebekhti''s Hoard - Gauntlets of Dragon Wrath'),
 (500010, 37193, 0, 0, 0, 1, 2, 1, 1, 'Sebekhti''s Hoard - Staggering Legplates');
+
+-- The Dawn Gallery (milestone 3): the Long Ramp's rolling suns, Khepret, the sun he pushes, the embers it leaves and the
+-- dusk scarabs, and his hoard. Stand-in models: the Ball of Flame (26767) for every sun and ember, the Giant Scarab
+-- (10031) scaled up, the Qiraji Scarab (9354). The suns and embers can't be targeted or attacked (unit_flags
+-- 0x2000000 not selectable, 0x100 immune to players, 0x2 non attackable).
+DELETE FROM `creature_template` WHERE `entry` BETWEEN 500102 AND 500106;
+INSERT INTO `creature_template` (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `exp`, `faction`, `speed_walk`,
+                                 `speed_run`, `detection_range`, `rank`, `DamageModifier`, `BaseAttackTime`,
+                                 `RangeAttackTime`, `unit_class`, `unit_flags`, `type`, `HealthModifier`, `ArmorModifier`,
+                                 `RegenHealth`, `flags_extra`, `ScriptName`) VALUES
+(500102, 'Khepret', 'Who Rolls the Sun', 83, 83, 2, 14, 1, 1.14286, 40, 3, 6, 2000, 2000, 1, 0, 1, 30, 1, 1, 1, 'boss_khepret'),
+(500103, 'Khepret''s Sun', '', 83, 83, 2, 14, 1, 1.4, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, ''),
+(500104, 'Rolling Sun', '', 80, 80, 2, 14, 1, 1, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, 'npc_rolling_sun'),
+(500105, 'Sun''s Path', '', 80, 80, 2, 14, 1, 1, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, 'npc_sun_trail'),
+(500106, 'Dusk Scarab', '', 80, 80, 2, 14, 1, 1.4, 30, 0, 1, 2000, 2000, 1, 0, 1, 0.3, 1, 1, 0, 'npc_dusk_scarab');
+
+DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 500102 AND 500106;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`) VALUES
+(500102, 0, 10031, 12, 1),
+(500103, 0, 26767, 3, 1),
+(500104, 0, 26767, 2.2, 1),
+(500105, 0, 26767, 0.8, 1),
+(500106, 0, 9354, 1.3, 1);
+
+DELETE FROM `creature` WHERE `guid` = 5800101;
+INSERT INTO `creature` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`,
+                        `orientation`, `spawntimesecs`) VALUES
+(5800101, 500102, 801, 1, 1, -225, 0, 52, 0, 604800);
+
+DELETE FROM `gameobject_template` WHERE `entry` = 500011;
+INSERT INTO `gameobject_template` (`entry`, `type`, `displayId`, `name`, `size`, `Data0`, `Data1`, `Data3`, `ScriptName`) VALUES
+(500011, 3, 259, 'Khepret''s Hoard', 1.5, 57, 500011, 1, '');
+
+-- Two rolls: a necklace, a cloak (item level 200 epics).
+DELETE FROM `gameobject_loot_template` WHERE `Entry` = 500011;
+INSERT INTO `gameobject_loot_template` (`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`,
+                                        `MinCount`, `MaxCount`, `Comment`) VALUES
+(500011, 40678, 0, 0, 0, 1, 1, 1, 1, 'Khepret''s Hoard - Pendant of the Outcast Hero'),
+(500011, 40679, 0, 0, 0, 1, 1, 1, 1, 'Khepret''s Hoard - Chained Military Gorget'),
+(500011, 40680, 0, 0, 0, 1, 1, 1, 1, 'Khepret''s Hoard - Encircling Burnished Gold Chains'),
+(500011, 40681, 0, 0, 0, 1, 1, 1, 1, 'Khepret''s Hoard - Lattice Choker of Light'),
+(500011, 39225, 0, 0, 0, 1, 2, 1, 1, 'Khepret''s Hoard - Cloak of Armed Strife'),
+(500011, 39241, 0, 0, 0, 1, 2, 1, 1, 'Khepret''s Hoard - Dark Shroud of the Scourge'),
+(500011, 39272, 0, 0, 0, 1, 2, 1, 1, 'Khepret''s Hoard - Drape of Surgery'),
+(500011, 39297, 0, 0, 0, 1, 2, 1, 1, 'Khepret''s Hoard - Cloak of Darkening');
+
+-- The Ball of Flame model is only a carrier: its fire is the Ball of Flames Visual aura (71706), and it hovers
+-- (bytes1 0x03000000), as Blizzard's own Ball of Flame (38332) has it.
+DELETE FROM `creature_template_addon` WHERE `entry` BETWEEN 500103 AND 500105;
+INSERT INTO `creature_template_addon` (`entry`, `bytes1`, `auras`) VALUES
+(500103, 50331648, '71706'),
+(500104, 50331648, '71706'),
+(500105, 0, '71706');

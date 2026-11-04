@@ -222,14 +222,7 @@ private:
     // Living players (not GMs) in the basin.
     std::vector<Player*> Players()
     {
-        std::vector<Player*> players;
-        me->GetMap()->DoForAllPlayers([&](Player* player) {
-            if (player->IsAlive() && !player->IsGameMaster() && player->GetExactDist2d(&BASIN_CENTER) < BASIN_RADIUS)
-            {
-                players.push_back(player);
-            }
-        });
-        return players;
+        return PlayersNear(me->GetMap(), BASIN_CENTER, BASIN_RADIUS);
     }
 
     void DeathRoll()
