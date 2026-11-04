@@ -541,9 +541,170 @@ static void Save(const Dbc& dbc, const fs::path& path) {
     Save(path, w.data);
 }
 
+// A PNG of 8-bit RGB rows, zlib-wrapped as uncompressed (stored) deflate blocks: big, but no compressor needed.
+static std::vector<uint8_t> Png(int width, int height, const std::vector<uint8_t>& rgb) {
+    static uint32_t table[256];
+    if (!table[1]) {
+        for (uint32_t n = 0; n < 256; n++) {
+            uint32_t c = n;
+            for (int k = 0; k < 8; k++) {
+                c = c & 1 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            }
+            table[n] = c;
+        }
+    }
+    std::vector<uint8_t> out = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
+    auto be32 = [](std::vector<uint8_t>& v, uint32_t x) {
+        for (int s = 24; s >= 0; s -= 8) {
+            v.push_back(uint8_t(x >> s));
+        }
+    };
+    auto chunk = [&](const char* type, const std::vector<uint8_t>& data) {
+        be32(out, uint32_t(data.size()));
+        size_t start = out.size();
+        out.insert(out.end(), type, type + 4);
+        out.insert(out.end(), data.begin(), data.end());
+        uint32_t crc = 0xFFFFFFFFu;
+        for (size_t i = start; i < out.size(); i++) {
+            crc = table[(crc ^ out[i]) & 0xFF] ^ (crc >> 8);
+        }
+        be32(out, crc ^ 0xFFFFFFFFu);
+    };
+    std::vector<uint8_t> header;
+    be32(header, uint32_t(width));
+    be32(header, uint32_t(height));
+    header.insert(header.end(), { 8, 2, 0, 0, 0 }); // 8 bits, RGB, deflate, no filter method, not interlaced
+    chunk("IHDR", header);
+
+    std::vector<uint8_t> raw;
+    for (int y = 0; y < height; y++) {
+        raw.push_back(0); // filter: none
+        raw.insert(raw.end(), rgb.begin() + size_t(y) * width * 3, rgb.begin() + size_t(y + 1) * width * 3);
+    }
+    std::vector<uint8_t> z = { 0x78, 0x01 };
+    uint32_t a = 1, b = 0;
+    for (size_t at = 0; at < raw.size(); at += 65535) {
+        uint16_t n = uint16_t(std::min<size_t>(65535, raw.size() - at));
+        z.push_back(at + n == raw.size() ? 1 : 0);
+        z.insert(z.end(), { uint8_t(n), uint8_t(n >> 8), uint8_t(~n), uint8_t(~n >> 8) });
+        z.insert(z.end(), raw.begin() + at, raw.begin() + at + n);
+    }
+    for (uint8_t v : raw) {
+        a = (a + v) % 65521;
+        b = (b + a) % 65521;
+    }
+    be32(z, b << 16 | a);
+    chunk("IDAT", z);
+    chunk("IEND", {});
+    return out;
+}
+
+static std::string JsonString(const char* s) {
+    std::string out = "\"";
+    for (; *s; s++) {
+        if (*s == '"' || *s == '\\') {
+            out += '\\';
+        }
+        out += *s;
+    }
+    return out + "\"";
+}
+
+// The plan view: <map>.png, the terrain from above (north up, west left) coloured by its textures, shaded from the
+// north-west, with water and a contour every 5 yards; and <map>.json, what Tools/WebClient/plan.html draws over it
+// (labels, doodads, building footprints).
+static void Plan(const MapSpec& spec, const fs::path& dir) {
+    float minX = spec.planMinX, maxX = spec.planMaxX, minY = spec.planMinY, maxY = spec.planMaxY, step = spec.planStep;
+    if (minX == maxX) {
+        maxX = maxY = ORIGIN - spec.firstTile * TILE_SIZE;
+        minX = minY = ORIGIN - (spec.lastTile + 1) * TILE_SIZE;
+    }
+    int width = int((maxY - minY) / step), height = int((maxX - minX) / step);
+    std::vector<float> h(size_t(width) * height);
+    for (int r = 0; r < height; r++) {
+        for (int c = 0; c < width; c++) {
+            h[size_t(r) * width + c] = spec.height(maxX - (r + 0.5f) * step, maxY - (c + 0.5f) * step);
+        }
+    }
+    auto colour = [](uint32_t rgb, int shift) { return float((rgb >> shift) & 0xFF); };
+    std::vector<uint8_t> rgb(size_t(width) * height * 3);
+    for (int r = 0; r < height; r++) {
+        for (int c = 0; c < width; c++) {
+            float x = maxX - (r + 0.5f) * step, y = maxY - (c + 0.5f) * step;
+            float here = h[size_t(r) * width + c];
+            float north = h[size_t(std::max(r - 1, 0)) * width + c], south = h[size_t(std::min(r + 1, height - 1)) * width + c];
+            float west = h[size_t(r) * width + std::max(c - 1, 0)], east = h[size_t(r) * width + std::min(c + 1, width - 1)];
+
+            float w[4];
+            spec.weights(x, y, w);
+            float col[3];
+            for (int k = 0; k < 3; k++) {
+                col[k] = colour(spec.textures[0].color, 16 - 8 * k);
+                for (size_t l = 1; l < spec.textures.size(); l++) {
+                    col[k] = Lerp(col[k], colour(spec.textures[l].color, 16 - 8 * k), w[l]);
+                }
+            }
+            // light from the north-west, 45 degrees up
+            float dx = (north - south) / (2 * step), dy = (west - east) / (2 * step);
+            float len = std::sqrt(dx * dx + dy * dy + 1);
+            float light = (dx * 0.5f + dy * 0.5f + 0.7071f) / len;
+            float shade = 0.35f + 0.75f * Clamp01(light);
+            bool contour = int(std::floor(here / 5)) != int(std::floor(east / 5)) || int(std::floor(here / 5)) != int(std::floor(south / 5));
+            for (int k = 0; k < 3; k++) {
+                col[k] *= shade * (contour ? 0.75f : 1.0f);
+            }
+            float level = spec.water(x, y);
+            if (level != NO_WATER && level > here) {
+                float deep = Clamp01((level - here) / 4);
+                const float water[3] = { 40, 95, 130 };
+                for (int k = 0; k < 3; k++) {
+                    col[k] = Lerp(col[k], water[k], 0.55f + 0.35f * deep);
+                }
+            }
+            for (int k = 0; k < 3; k++) {
+                rgb[(size_t(r) * width + c) * 3 + k] = uint8_t(std::min(255.0f, std::max(0.0f, col[k])));
+            }
+        }
+    }
+    Save(dir / (std::string(spec.dir) + ".png"), Png(width, height, rgb));
+
+    std::string json = "{\"map\":" + std::to_string(spec.id) + ",\"name\":" + JsonString(spec.dir);
+    char buf[256];
+    snprintf(buf, sizeof(buf), ",\"minX\":%g,\"maxX\":%g,\"minY\":%g,\"maxY\":%g,\"step\":%g,\"width\":%d,\"height\":%d", minX,
+             maxX, minY, maxY, step, width, height);
+    json += buf;
+    json += ",\"labels\":[";
+    for (size_t i = 0; i < spec.labels.size(); i++) {
+        snprintf(buf, sizeof(buf), "%s{\"text\":%s,\"x\":%g,\"y\":%g}", i ? "," : "", JsonString(spec.labels[i].text).c_str(),
+                 spec.labels[i].at.x, spec.labels[i].at.y);
+        json += buf;
+    }
+    json += "],\"doodads\":[";
+    for (size_t i = 0; i < spec.doodads.size(); i++) {
+        const Doodad& d = spec.doodads[i];
+        json += (i ? ",{\"model\":" : "{\"model\":") + JsonString(d.model);
+        snprintf(buf, sizeof(buf), ",\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.1f,\"scale\":%.2f}", d.x, d.y, d.z, d.yaw, d.scale);
+        json += buf;
+    }
+    json += "],\"buildings\":[";
+    for (size_t i = 0; i < spec.buildings.size(); i++) {
+        const Building& b = spec.buildings[i];
+        json += (i ? ",{\"model\":" : "{\"model\":") + JsonString(b.model) + ",\"corners\":[";
+        const float corners[4][2] = { { b.lo[0], b.lo[1] }, { b.hi[0], b.lo[1] }, { b.hi[0], b.hi[1] }, { b.lo[0], b.hi[1] } };
+        for (int k = 0; k < 4; k++) {
+            Point p = ToWorld(b, corners[k][0], corners[k][1]);
+            snprintf(buf, sizeof(buf), "%s[%.2f,%.2f]", k ? "," : "", p.x, p.y);
+            json += buf;
+        }
+        json += "]}";
+    }
+    json += "]}\n";
+    Save(dir / (std::string(spec.dir) + ".json"), std::vector<uint8_t>(json.begin(), json.end()));
+}
+
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        fprintf(stderr, "usage: MapGen <outdir> <folder with the original Map.dbc, AreaTable.dbc and MapDifficulty.dbc>\n");
+    if (argc != 3 && argc != 4) {
+        fprintf(stderr, "usage: MapGen <outdir> <folder with the original Map.dbc, AreaTable.dbc and MapDifficulty.dbc> [plan dir]\n");
         return 1;
     }
     fs::path out = argv[1];
@@ -565,6 +726,9 @@ int main(int argc, char** argv) {
             }
         }
         spec.rows(dbcs);
+        if (argc == 4) {
+            Plan(spec, argv[3]);
+        }
         int tiles = spec.lastTile - spec.firstTile + 1;
         printf("map %u '%s': %d tiles, %zu doodads, %zu buildings\n", spec.id, spec.dir, tiles * tiles, spec.doodads.size(),
                spec.buildings.size());

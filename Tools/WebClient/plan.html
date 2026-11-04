@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map Plan</title>
+<style>
+  :root { --bg: #15130f; --panel: #221f19; --text: #e8dcc0; --muted: #9c917a; --line: #3a3428; --accent: #e0b04a; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px system-ui, sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 1; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; }
+  select, button, label { font: inherit; color: var(--text); }
+  select, button { background: #2e2a22; border: 1px solid var(--line); border-radius: 5px; padding: 5px 9px; }
+  button { cursor: pointer; }
+  #status { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+  main { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+  #wrap { overflow: auto; max-width: 100%; border: 1px solid var(--line); }
+  canvas { display: block; }
+  aside { min-width: 240px; max-width: 320px; }
+  aside h2 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .item { display: flex; gap: 8px; align-items: center; padding: 2px 0; }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #000; flex: none; }
+  .count { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+  @media (max-width: 800px) { main { flex-direction: column; } aside { max-width: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Map plan</h1>
+  <select id="map"><option>DrownedSun</option><option>TestMap</option></select>
+  <label><input type="checkbox" id="showDoodads" checked> doodads</label>
+  <label><input type="checkbox" id="showGrid" checked> grid</label>
+  <button id="save">Save PNG</button>
+  <span id="status">Loading…</span>
+</header>
+<main>
+  <div id="wrap"><canvas id="plan"></canvas></div>
+  <aside><h2>Doodads</h2><div id="legend"></div></aside>
+</main>
+<script>
+  // The plan views MapGen writes (Tools/MpqTool/mapgen.cpp Plan): <map>.png, the terrain from above with north up and
+  // west to the left, and <map>.json with what to draw over it. serve.py serves them from build/mods/plan.
+  const params = new URLSearchParams(location.search);
+  const select = document.getElementById('map');
+  const canvas = document.getElementById('plan');
+  const g = canvas.getContext('2d');
+  const status = document.getElementById('status');
+  let plan = null, image = null;
+  select.value = params.get('map') || 'DrownedSun';
+
+  // One colour per model, from its file name, so the legend and the markers agree between runs.
+  const colourOf = (model) => {
+    let h = 0;
+    for (const ch of model) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return `hsl(${h % 360} 80% 60%)`;
+  };
+  const shortName = (model) => model.split('\\').pop().replace(/\.(m2|mdx)$/i, '');
+  // world x (north) and y (west) to pixels
+  const px = (x, y) => [(plan.maxY - y) / plan.step, (plan.maxX - x) / plan.step];
+
+  function draw() {
+    canvas.width = plan.width;
+    canvas.height = plan.height;
+    g.drawImage(image, 0, 0);
+    const gridStep = 50;
+    if (document.getElementById('showGrid').checked) {
+      g.strokeStyle = 'rgba(255,255,255,0.18)';
+      g.fillStyle = 'rgba(255,255,255,0.7)';
+      g.font = '11px system-ui';
+      g.lineWidth = 1;
+      for (let x = Math.ceil(plan.minX / gridStep) * gridStep; x <= plan.maxX; x += gridStep) {
+        const [, y0] = px(x, 0);
+        g.beginPath(); g.moveTo(0, y0); g.lineTo(plan.width, y0); g.stroke();
+        g.fillText(`x ${x}`, 4, y0 - 3);
+      }
+      for (let y = Math.ceil(plan.minY / gridStep) * gridStep; y <= plan.maxY; y += gridStep) {
+        const [x0] = px(0, y);
+        g.beginPath(); g.moveTo(x0, 0); g.lineTo(x0, plan.height); g.stroke();
+        g.fillText(`y ${y}`, x0 + 3, 12);
+      }
+    }
+    for (const b of plan.buildings) {
+      g.beginPath();
+      b.corners.forEach(([x, y], i) => { const [cx, cy] = px(x, y); i ? g.lineTo(cx, cy) : g.moveTo(cx, cy); });
+      g.closePath();
+      g.fillStyle = 'rgba(80,160,255,0.18)';
+      g.strokeStyle = 'rgba(120,190,255,0.9)';
+      g.lineWidth = 2;
+      g.fill(); g.stroke();
+    }
+    if (document.getElementById('showDoodads').checked) {
+      for (const d of plan.doodads) {
+        const [cx, cy] = px(d.x, d.y);
+        const r = Math.max(2.5, 1.6 * d.scale / plan.step);
+        g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2);
+        g.fillStyle = colourOf(d.model); g.fill();
+        g.lineWidth = 1; g.strokeStyle = '#000'; g.stroke();
+        // facing
+        const a = d.yaw * Math.PI / 180;
+        g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx - Math.sin(a) * r * 1.8, cy - Math.cos(a) * r * 1.8); g.stroke();
+      }
+    }
+    g.textAlign = 'center';
+    g.font = '600 15px system-ui';
+    for (const l of plan.labels) {
+      const [cx, cy] = px(l.x, l.y);
+      g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,0.85)'; g.strokeText(l.text, cx, cy);
+      g.fillStyle = '#fff'; g.fillText(l.text, cx, cy);
+    }
+    g.textAlign = 'start';
+
+    const counts = {};
+    for (const d of plan.doodads) counts[d.model] = (counts[d.model] || 0) + 1;
+    document.getElementById('legend').innerHTML = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([m, n]) =>
+      `<div class="item" title="${m.replace(/"/g, '&quot;')}"><span class="swatch" style="background:${colourOf(m)}"></span>${shortName(m)}<span class="count">${n}</span></div>`).join('');
+    status.textContent = `${plan.name}: ${plan.doodads.length} doodads, ${plan.buildings.length} buildings, ${plan.step} yd/px`;
+  }
+
+  async function load() {
+    const name = select.value;
+    status.textContent = 'Loading…';
+    plan = await (await fetch(`plan/${name}.json?${Date.now()}`)).json();
+    image = new Image();
+    await new Promise((resolve) => { image.onload = resolve; image.src = `plan/${name}.png?${Date.now()}`; });
+    draw();
+    if (params.has('save')) await save();
+  }
+
+  // Sends the composed plan to serve.py, which keeps it in build/shots (localhost only).
+  async function save() {
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const response = await fetch(`dev/save?name=plan_${plan.name}`, { method: 'POST', body: blob });
+    status.textContent = response.ok ? `Saved ${await response.text()}` : `Saving failed: ${await response.text()}`;
+  }
+
+  canvas.addEventListener('mousemove', (event) => {
+    if (!plan) return;
+    const rect = canvas.getBoundingClientRect();
+    const cx = (event.clientX - rect.left) * canvas.width / rect.width, cy = (event.clientY - rect.top) * canvas.height / rect.height;
+    const x = plan.maxX - cy * plan.step, y = plan.maxY - cx * plan.step;
+    let near = null, best = 4;
+    for (const d of plan.doodads) {
+      const dist = Math.hypot(d.x - x, d.y - y);
+      if (dist < best) { best = dist; near = d; }
+    }
+    status.textContent = `x ${x.toFixed(1)}  y ${y.toFixed(1)}` + (near ? `  —  ${shortName(near.model)} (z ${near.z}, scale ${near.scale})` : '');
+  });
+  select.addEventListener('change', load);
+  document.getElementById('showDoodads').addEventListener('change', draw);
+  document.getElementById('showGrid').addEventListener('change', draw);
+  document.getElementById('save').addEventListener('click', save);
+  load().catch((error) => { status.textContent = `Could not load the plan: ${error.message}. Run Mods/mods.sh build first.`; });
+</script>
+</body>
+</html>

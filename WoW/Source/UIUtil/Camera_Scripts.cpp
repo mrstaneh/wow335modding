@@ -274,8 +274,25 @@ static int32_t Script_VehicleCameraZoomOut(lua_State* L) {
     return Script_CameraZoomOut(L);
 }
 
+// wow335modding: SetCameraPose(distance, pitch, yaw) puts the camera exactly there at once, without easing, for the
+// photo tool (Tools/WebClient/photo.js). Distance in yards behind the player (0 is first person, the player unseen),
+// pitch and yaw in degrees as the saved views keep them, yaw relative to the player's facing. Missing ones stay.
+static int32_t Script_SetCameraPose(lua_State* L) {
+    CGCamera* camera = CGWorldFrame::GetActiveCamera();
+    auto set = [&](int32_t arg, float scale, float& value, CAMERA_SMOOTH& smooth) {
+        if (lua_isnumber(L, arg)) {
+            value = smooth.m_target = smooth.m_startValue = static_cast<float>(lua_tonumber(L, arg)) * scale;
+        }
+    };
+    set(1, 1.0f, camera->m_distance, camera->m_smoothDistance);
+    set(2, 0.017453292f, camera->m_pitch, camera->m_smoothPitch);
+    set(3, 0.017453292f, camera->m_yaw, camera->m_smoothYaw);
+    return 0;
+}
+
 // STATIC: 0x00AD2060
 static FrameScript_Method s_ScriptFunctions[] = {
+    { "SetCameraPose", &Script_SetCameraPose },
     { "CameraZoomIn", &Script_CameraZoomIn },
     { "CameraZoomOut", &Script_CameraZoomOut },
     { "MoveViewInStart", &Script_MoveViewInStart },

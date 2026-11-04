@@ -17,10 +17,10 @@ const int LAST_TILE = 32;
 const float HALF = (LAST_TILE - FIRST_TILE + 1) * TILE_SIZE / 2;
 
 const std::vector<Texture> TEXTURES = {
-    { "Tileset\\Elwynn\\ElwynnGrassBase.blp", 757 },
-    { "Tileset\\Elwynn\\ElwynnFlowerBase.blp", 761 },
-    { "Tileset\\Elwynn\\ElwynnDirtBase2.blp", 1106 },
-    { "Tileset\\Elwynn\\ElwynnRockBaseTest2.blp", 993 },
+    { "Tileset\\Elwynn\\ElwynnGrassBase.blp", 757, 0x5C7A2E },
+    { "Tileset\\Elwynn\\ElwynnFlowerBase.blp", 761, 0x7A8A3A },
+    { "Tileset\\Elwynn\\ElwynnDirtBase2.blp", 1106, 0x8A6E4A },
+    { "Tileset\\Elwynn\\ElwynnRockBaseTest2.blp", 993, 0x7A7468 },
 };
 
 const uint16_t LIQUID_WATER = 1; // LiquidType.dbc
@@ -268,6 +268,7 @@ MapSpec TestMap() {
     spec.doodads = Doodads();
     spec.buildings = { INN };
     spec.rows = Rows;
+    spec.labels = { { "Clearing (spawn)", CLEARING }, { "Pond", POND }, { "Inn", INN.at } };
 
     Point basement = ToWorld(INN, BASEMENT[0], BASEMENT[1]);
     printf("map %u '%s': spawn %.1f %.1f %.1f, inn %.1f %.1f %.1f, basement %.2f %.2f %.2f\n", MAP_ID, MAP_DIR, CLEARING.x,

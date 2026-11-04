@@ -40,6 +40,9 @@ import urllib.error
 from urllib.request import Request, urlopen
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Development views (localhost only): the plan views Mods/mods.sh build writes, and where pictures sent to /dev/save land.
+PLANS = os.path.join(HERE, '..', '..', 'build', 'mods', 'plan')
+SHOTS = os.path.join(HERE, '..', '..', 'build', 'shots')
 ALLOWED_PORTS = {3724, 8085}
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 # The AzerothCore database, the way Mods/mods.sh reaches it.
@@ -229,6 +232,12 @@ class Handler(BaseHTTPRequestHandler):
             root, rest = self.server.data, path[len('/data'):]
         elif path in ('/', '/index.html'):
             return os.path.join(HERE, 'index.html')
+        elif path in ('/plan.html', '/photo.js'):
+            return os.path.join(HERE, path.lstrip('/'))
+        elif path.startswith('/plan/'):
+            root, rest = PLANS, path[len('/plan'):]
+        elif path.startswith('/shots/'):
+            root, rest = os.path.join(HERE, 'shots'), path[len('/shots'):]
         else:
             root, rest = self.server.build, path
         full = os.path.realpath(os.path.join(root, rest.lstrip('/')))
@@ -252,6 +261,8 @@ class Handler(BaseHTTPRequestHandler):
         self.serve(True)
 
     def do_POST(self):
+        if self.path.split('?')[0] == '/dev/save':
+            return self.dev_save()
         form = parse_qs(self.rfile.read(min(int(self.headers.get('Content-Length', 0)), 1024)).decode(errors='replace'))
         if self.path == '/guest':
             return self.guest()
@@ -267,6 +278,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(503, 'The account database is not reachable right now.')
             return self.discord_start(guest)
         self.reply(404, '')
+
+    def dev_save(self):
+        """Keeps a picture (PNG body) as build/shots/<name>.png: the plan view's Save button and the photo tool's shots.
+        Only from this machine directly, never through the reverse proxy."""
+        if self.client_address[0] not in ('127.0.0.1', '::1') or self.headers.get('X-Forwarded-For'):
+            return self.reply(403, 'Only from this machine.')
+        name = parse_qs(self.path.partition('?')[2]).get('name', [''])[0]
+        size = int(self.headers.get('Content-Length', 0))
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', name) or not 0 < size <= 64 << 20:
+            return self.reply(400, 'Give a name of letters, digits, _ and -, and a picture of at most 64 MB.')
+        data = self.rfile.read(size)
+        os.makedirs(SHOTS, exist_ok=True)
+        path = os.path.join(SHOTS, name + '.png')
+        with open(path, 'wb') as f:
+            f.write(data)
+        self.reply(200, os.path.relpath(path, os.path.join(HERE, '..', '..')).replace(os.sep, '/'))
 
     def client(self):
         """The client's address. Behind a reverse proxy every request comes from this machine; the proxy names it."""

@@ -55,10 +55,10 @@ const AreaName AREAS[] = {
 };
 
 const std::vector<Texture> TEXTURES = {
-    { "Tileset\\Tanaris\\TanarisSandBase01.blp", 0 },
-    { "Tileset\\Tanaris\\TanarisCrackedGround.blp", 0 }, // room floors
-    { "Tileset\\Tanaris\\TanarisSandStones.blp", 0 },    // passages
-    { "Tileset\\Tanaris\\TanarisRockBase01.blp", 0 },    // the canyon walls
+    { "Tileset\\Tanaris\\TanarisSandBase01.blp", 0, 0xD2B07A },
+    { "Tileset\\Tanaris\\TanarisCrackedGround.blp", 0, 0xB89A6E }, // room floors
+    { "Tileset\\Tanaris\\TanarisSandStones.blp", 0, 0xA88E68 },    // passages
+    { "Tileset\\Tanaris\\TanarisRockBase01.blp", 0, 0x9A6A44 },    // the canyon walls
 };
 
 const uint16_t LIQUID_WATER = 1;
@@ -416,6 +416,17 @@ MapSpec DrownedSun() {
     spec.liquidType = LIQUID_WATER;
     spec.doodads = Doodads();
     spec.rows = Rows;
+    spec.planMinX = -280;
+    spec.planMaxX = 300;
+    spec.planMinY = -270;
+    spec.planMaxY = 270;
+    spec.planStep = 0.5f;
+    spec.labels = {
+        { "Sun Court", ROOMS[0].at }, { "Sluices", ROOMS[1].at }, { "Sebekhti's basin", ROOMS[2].at },
+        { "Khepret's arena", ROOMS[3].at }, { "Long Ramp", { -110, 0 } }, { "Scales", ROOMS[4].at },
+        { "Anpuet's hall", ROOMS[5].at }, { "Apepheth's pit", ROOMS[6].at }, { "Lightless Way", { 115, -15 } },
+        { "Sanctum of the Unmade", ROOMS[7].at }, { "spawn", SPAWN },
+    };
 
     printf("map %u '%s': spawn %.1f %.1f %.2f; entrance on map 800 at %.1f %.1f %.2f\n", MAP_ID, MAP_DIR, SPAWN.x, SPAWN.y,
            Height(SPAWN.x, SPAWN.y), ENTRANCE.x, ENTRANCE.y, TestMapHeight(ENTRANCE.x, ENTRANCE.y));

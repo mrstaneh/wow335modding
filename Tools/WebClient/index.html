@@ -160,5 +160,9 @@
   if (!crossOriginIsolated) status.textContent = 'Needs cross-origin isolation: open this page through Tools/WebClient/serve.py.';
 </script>
 <script src="WowWeb.js"></script>
+<script>
+  // The photo tool (photo.js) for developing maps, only when playing on this machine.
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) document.head.append(Object.assign(document.createElement('script'), { src: 'photo.js' }));
+</script>
 </body>
 </html>

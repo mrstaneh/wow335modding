@@ -21,10 +21,19 @@ struct Point {
     float x, y;
 };
 
-// A terrain texture and the ground effect (grass blades, pebbles; GroundEffectTexture.dbc, 0 for none) it carries.
+// A terrain texture, the ground effect (grass blades, pebbles; GroundEffectTexture.dbc, 0 for none) it carries, and
+// roughly its average colour (0xRRGGBB) for the plan view.
+// ponytail: colours picked by eye; read the BLPs' smallest mipmap if the plans need to match closely
 struct Texture {
     const char* file;
     uint32_t effect;
+    uint32_t color;
+};
+
+// A name written on the plan view.
+struct Label {
+    const char* text;
+    Point at;
 };
 
 struct Doodad {
@@ -72,6 +81,11 @@ struct MapSpec {
     std::vector<Doodad> doodads;
     std::vector<Building> buildings;
     std::function<void(Dbcs&)> rows;                    // its Map.dbc row and anything else it needs
+
+    // The plan view (MapGen's third argument): the part of the map drawn, in world x (north) and y (west), and yards
+    // per pixel. All zero draws the whole block of tiles.
+    float planMinX = 0, planMaxX = 0, planMinY = 0, planMaxY = 0, planStep = 1;
+    std::vector<Label> labels;
 };
 
 MapSpec TestMap();

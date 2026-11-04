@@ -66,7 +66,8 @@ build)
     done
     rm -rf "$WORK/pack"
     cp -r "$WORK/work" "$WORK/pack"
-    "$MAPGEN" "$WORK/pack" "$WORK/orig/DBFilesClient"
+    # the plan views (build/mods/plan) are for Tools/WebClient/plan.html
+    "$MAPGEN" "$WORK/pack" "$WORK/orig/DBFilesClient" "$WORK/plan"
     rm -f "$WORK/patch.MPQ"
     "$TOOL" pack "$WORK/patch.MPQ" "$WORK/pack"
     cp "$WORK/patch.MPQ" "$DATA/$LOCALE/patch-$LOCALE-4.MPQ"

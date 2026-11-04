@@ -10,13 +10,16 @@
 #if defined(WOWDECOMP_PLATFORM_WEB)
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <emscripten.h>
 #include <emscripten/html5.h>
 #include <pthread.h>
 #include <windows.h>
 #include "Engine/Source/Os/Input.h"
+#include "Engine/Source/FrameScript/FrameScript.h"
 #include "Engine/Source/Os/TimeManager.h"
 
 #define CANVAS "#canvas"
@@ -33,7 +36,12 @@ int32_t s_mouseX;
 int32_t s_mouseY;
 OS_MOUSE_MODE s_mouseMode = OS_MOUSE_MODE_NORMAL;
 bool s_captured;
-bool s_keepOffset; // a capture ended (Esc): the client's cursor moves by the pointer's movement until the pointer leaves
+bool s_keepOffset;
+
+// The photo tool's way in (Tools/WebClient/photo.js): the page leaves a line of Lua here and raises the flag, and the
+// client runs it on its own thread the next time it reads input.
+char s_lua[16384];
+std::atomic<int32_t> s_luaPending; // a capture ended (Esc): the client's cursor moves by the pointer's movement until the pointer leaves
 float s_mouseSpeed = 1.0f;
 
 struct Lock {
@@ -279,6 +287,18 @@ int32_t OsQueueGet(OSINPUT* id, int32_t* param0, int32_t* param1, int32_t* param
 }
 
 void OsInputInitialize() {
+    // Module.wowRunLua(code): false while the previous line still waits or when the line is too long.
+    MAIN_THREAD_EM_ASM({
+        Module.wowRunLua = (code) => {
+            const bytes = new TextEncoder().encode(code);
+            if (bytes.length >= $2 || Atomics.load(HEAP32, $1 >> 2)) return false;
+            HEAPU8.set(bytes, $0);
+            HEAPU8[$0 + bytes.length] = 0;
+            Atomics.store(HEAP32, $1 >> 2, 1);
+            return true;
+        };
+    }, s_lua, &s_luaPending, sizeof(s_lua));
+
     pthread_t main = EM_CALLBACK_THREAD_CONTEXT_MAIN_RUNTIME_THREAD;
     emscripten_set_keydown_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, OnKey, main);
     emscripten_set_keyup_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, OnKey, main);
@@ -299,6 +319,13 @@ void OsInputDestroy() {
 }
 
 int32_t OsInputGet(OSINPUT* id, int32_t* param0, int32_t* param1, int32_t* param2, int32_t* param3) {
+    if (s_luaPending.load()) {
+        if (FrameScript_GetContext()) {
+            FrameScript_Execute(s_lua, "photo", nullptr);
+        }
+        s_luaPending.store(0);
+    }
+
     *id = static_cast<OSINPUT>(-1);
     return OsQueueGet(id, param0, param1, param2, param3);
 }
