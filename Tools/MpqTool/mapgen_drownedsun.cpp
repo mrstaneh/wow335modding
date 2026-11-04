@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include "mapgen.h"
 
@@ -56,9 +57,9 @@ const AreaName AREAS[] = {
 
 const std::vector<Texture> TEXTURES = {
     { "Tileset\\Tanaris\\TanarisSandBase01.blp", 0, 0xD2B07A },
-    { "Tileset\\Tanaris\\TanarisCrackedGround.blp", 0, 0xB89A6E }, // room floors
-    { "Tileset\\Tanaris\\TanarisSandStones.blp", 0, 0xA88E68 },    // passages
-    { "Tileset\\Tanaris\\TanarisRockBase01.blp", 0, 0x9A6A44 },    // the canyon walls
+    { "Tileset\\Silithis\\SilithisBrick01.blp", 0, 0x7A6650 },            // room floors: sandstone flags
+    { "Tileset\\Feralas\\FeralasRocksGround.blp", 0, 0xBC9866 },          // passages: cobbles
+    { "Tileset\\ThousandNeedles\\ThousandNeedlesRock.blp", 0, 0xB07A58 }, // the canyon walls
 };
 
 const uint16_t LIQUID_WATER = 1;
@@ -101,27 +102,48 @@ const std::vector<Passage> PASSAGES = {
 const Point ISLANDS[] = { { 18, -190 }, { -20, -195 }, { 5, -228 } };
 const float ISLAND_RADIUS = 6;
 
-// The open space nearest to a point: how far outside it the point is (0 inside), its floor there, and its area.
+// A room's edge at an angle (radians): its radius, pushed in and out by up to an eighth so no room is a circle.
+float EdgeRadius(const Room& room, float angle) {
+    return room.radius * (1 + 0.13f * Noise(1.6f * std::cos(angle) + room.at.x / 37, 1.6f * std::sin(angle) + room.at.y / 37));
+}
+
+// The open space nearest to a point: how far outside it the point is (0 inside), how far inside (0 outside), its floor
+// there, its area, how far outside the nearest passage (negative inside), and the floors of all spaces blended by
+// nearness, which the walls between them rise from.
 struct Open {
-    float outside;
+    float outside, inside;
     float floor;
     Area area;
     bool passage;
+    float passageOutside;
+    float wallFloor;
 };
 
 // Where open spaces overlap (a passage starting inside a room, two segments at a bend) the point belongs to the one it
-// is deepest inside, so the floor hands over where both have the same height instead of stepping.
+// is deepest inside, and its floor is theirs blended by how deep inside each it is, so it hands over without a step.
 Open Nearest(float x, float y) {
     float best = 1e9f; // signed: distance outside the space, negative inside
-    Open open = { 0, 0, ZONE, false };
+    Open open = { 0, 0, 0, ZONE, false, 1e9f, 0 };
+    float blended = 0, blendWeights = 0, deep = 0, deepWeights = 0;
+    auto blend = [&](float d, float floor) {
+        float w = 1 / std::pow(std::max(d, 0.0f) + 4, 4.0f);
+        blended += w * floor;
+        blendWeights += w;
+        if (d < 0) {
+            deep += -d * floor;
+            deepWeights += -d;
+        }
+    };
     for (const Room& room : ROOMS) {
-        float d = Distance(room.at, x, y) - room.radius;
+        float d = Distance(room.at, x, y) - EdgeRadius(room, std::atan2(y - room.at.y, x - room.at.x));
+        blend(d, room.z);
         if (d < best) {
             best = d;
-            open = { 0, room.z, room.area, false };
+            open = { 0, 0, room.z, room.area, false, 1e9f, 0 };
         }
     }
     // Inside a bend the floors of the two segments differ a little; blending them by depth keeps it a slope.
+    float passageOutside = 1e9f;
     for (const Passage& p : PASSAGES) {
         float nearest = 1e9f, nearestFloor = 0, weighted = 0, weights = 0;
         for (size_t i = 0; i + 1 < p.points.size(); i++) {
@@ -139,25 +161,52 @@ Open Nearest(float x, float y) {
                 weights += -d;
             }
         }
+        float floor = weights > 0 ? weighted / weights : nearestFloor;
+        blend(nearest, floor);
         if (nearest < best) {
             best = nearest;
-            open = { 0, weights > 0 ? weighted / weights : nearestFloor, p.area, true };
+            open = { 0, 0, floor, p.area, true, 0, 0 };
         }
+        passageOutside = std::min(passageOutside, nearest);
+    }
+    open.passageOutside = passageOutside;
+    if (deepWeights > 0) {
+        open.floor = deep / deepWeights;
     }
     open.outside = std::max(0.0f, best);
+    open.inside = std::max(0.0f, -best);
+    // At the foot of a wall its own space's floor, further out all of them blended, so walls between spaces at different
+    // heights don't crease where the nearest space changes.
+    open.wallFloor = Lerp(open.floor, blended / blendWeights, Smooth(0, 12, open.outside));
     return open;
 }
+
+const float PLATEAU = 90; // the canyon's rim, give or take 12
 
 float Height(float x, float y) {
     Open open = Nearest(x, y);
     float floor = open.floor + 0.3f * Fbm(x / 20 + 4, y / 20 - 6);
+    // The Nave's rooms: a dry stone ledge a few yards wide along the walls, the middle under the flood; it slopes down
+    // into the passages.
+    if (open.area == FLOODED_NAVE && !open.passage) {
+        floor += 2.6f * Smooth(8, 4, open.inside) * Smooth(-1, 3, open.passageOutside);
+    }
     for (Point island : ISLANDS) {
         floor = std::max(floor, Lerp(open.floor, 8.0f, Smooth(ISLAND_RADIUS + 3, ISLAND_RADIUS, Distance(island, x, y))));
     }
-    float plateau = std::max(open.floor + 30, 78.0f) + 12 * Fbm(x / 60 + 2, y / 60 + 9);
-    // Over 20 yards: much steeper and the terrain's 2-4 yard grid draws the walls as saw teeth.
-    float wall = Smooth(0, 20, open.outside);
-    return Lerp(floor, plateau, wall) + 5 * Fbm(x / 12 - 5, y / 12 + 1) * Smooth(0, 6, open.outside);
+    if (open.outside == 0) {
+        return floor;
+    }
+    // Walls in three rock terraces up to the plateau, wider where they rise further so every riser is about as steep:
+    // much steeper and the terrain's 2-4 yard grid draws them as saw teeth. The shelves wander with noise.
+    float plateau = PLATEAU + 12 * Fbm(x / 60 + 2, y / 60 + 9);
+    float width = std::max(18.0f, (plateau - open.wallFloor) * 0.42f);
+    float t = Clamp01(open.outside / width + 0.06f * Fbm(x / 25 - 3, y / 25 + 8));
+    const float STEPS = 3;
+    float k = std::min(std::floor(t * STEPS), STEPS - 1);
+    float wall = (k + Smooth(0.2f, 0.85f, t * STEPS - k)) / STEPS;
+    float base = Lerp(floor, open.wallFloor, Smooth(0, 12, open.outside));
+    return Lerp(base, plateau, wall) + 3 * Fbm(x / 9 - 5, y / 9 + 1) * Smooth(0, 6, open.outside);
 }
 
 float Slope(float x, float y) {
@@ -231,20 +280,15 @@ std::vector<Doodad> Doodads() {
     auto ring = [&](const Room& room, int count, float offset, float inset, auto place) {
         for (int i = 0; i < count; i++) {
             float a = (offset + 360.0f * i / count) * PI / 180;
-            place(room.at.x + (room.radius - inset) * std::cos(a), room.at.y + (room.radius - inset) * std::sin(a));
+            float r = EdgeRadius(room, a) - inset;
+            place(room.at.x + r * std::cos(a), room.at.y + r * std::sin(a));
         }
     };
     const Room& court = ROOMS[0];
 
-    // The Sun Court: braziers between the five ways out (north, west, south, east and the stair at 45 degrees), an
-    // obelisk either side of each wing's way, and the altar in the middle.
+    // The Sun Court: braziers between the five ways out (north, west, south, east and the stair at 45 degrees) and the
+    // altar in the middle; the steles between the ways are buildings.
     ring(court, 8, 22.5f, 6, [&](float x, float y) { add(BRAZIER, x, y, 0.1f, Facing(x, y, court.at), 1.0f); });
-    for (float way : { 0.0f, 90.0f, 180.0f, 270.0f }) {
-        for (float side : { -13.0f, 13.0f }) {
-            float a = (way + side) * PI / 180;
-            add(OBELISK, 44 * std::cos(a), 44 * std::sin(a), 0.3f, way + 90, 0.8f);
-        }
-    }
     add(ALTAR, 0, 0, 0.2f, 180, 1.2f);
 
     // The Flooded Nave: palms on the banks and the basin's islands, drowned logs, bones in the shallows.
@@ -264,7 +308,7 @@ std::vector<Doodad> Doodads() {
         add(SCONCE, x, 8, 0.0f, -90, 1.0f);
         add(SCONCE, x, -8, 0.0f, 90, 1.0f);
     }
-    ring(ROOMS[3], 6, 0, 5, [&](float x, float y) { add(OBELISK, x, y, 0.3f, Facing(x, y, ROOMS[3].at), 0.8f); });
+    ring(ROOMS[3], 6, 30, 5, [&](float x, float y) { add(OBELISK, x, y, 0.3f, Facing(x, y, ROOMS[3].at), 0.45f); });
 
     // The Hall of Weighing: coffins along the hall's walls, braziers around the Scales.
     ring(ROOMS[4], 6, 30, 4, [&](float x, float y) { add(BRAZIER, x, y, 0.1f, Facing(x, y, ROOMS[4].at), 1.0f); });
@@ -302,8 +346,207 @@ std::vector<Doodad> Doodads() {
     return out;
 }
 
-// Zul'Farrak's rows, turned into ours: the map, its zone and subzones, and its one difficulty.
+// A WMO and its bounding box from its MOHD, in its own coordinates.
+struct Candidate {
+    const char* model;
+    float lo[3], hi[3];
+};
+
+// Ahn'Qiraj's dark stone arch: it spans its own y, so passages run along its x.
+const Candidate GATE = { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_object02.wmo", { -11.3f, -23.7f, -20.5f }, { 11.3f, 23.7f, 20.5f } };
+// Standing glyph slabs, their carved faces towards their own +x.
+const Candidate STELES[] = {
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnD.wmo", { -11.8f, -15.7f, -0.5f }, { 11.4f, 10.8f, 58.3f } },
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnE.wmo", { -11.0f, -15.6f, -1.8f }, { 13.9f, 11.3f, 58.7f } },
+};
+// Fallen and broken ones.
+const Candidate FALLEN_B = { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnB.wmo", { -21.0f, -18.9f, -1.0f }, { 25.7f, 12.4f, 22.0f } };
+const Candidate FALLEN_C = { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnC.wmo", { -24.1f, -40.6f, -10.6f }, { 25.1f, 11.8f, 25.1f } };
+const Candidate FALLEN_H = { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnH.wmo", { -27.1f, -22.1f, -3.3f }, { 12.9f, 12.1f, 58.3f } };
+
+// A WMO with the middle of its footprint at a point, its own +x towards facing (degrees, 0 north, 90 west), its lowest
+// point sunk below z.
+Building Place(const Candidate& c, Point at, float facing, float z, float sink) {
+    Building b = { c.model, at, z - c.lo[2] - sink, facing - 180, 0, 0, { c.lo[0], c.lo[1], c.lo[2] }, { c.hi[0], c.hi[1], c.hi[2] } };
+    Point middle = ToWorld(b, (c.lo[0] + c.hi[0]) / 2, (c.lo[1] + c.hi[1]) / 2);
+    b.at = { 2 * at.x - middle.x, 2 * at.y - middle.y };
+    return b;
+}
+
+Point AtEdge(const Room& room, float degrees, float inset) {
+    float a = degrees * PI / 180, r = EdgeRadius(room, a) - inset;
+    return { room.at.x + r * std::cos(a), room.at.y + r * std::sin(a) };
+}
+
+std::vector<Building> Buildings() {
+    std::vector<Building> out;
+    // Arches over the wings' ways out of the Sun Court, a little way in so they don't crowd the court, and over the
+    // ways into their last rooms.
+    auto gate = [&](const Passage& p, bool atEnd) {
+        Point a = p.points[atEnd ? p.points.size() - 1 : 0], b = p.points[atEnd ? p.points.size() - 2 : 1];
+        float length = Distance(a, b.x, b.y), in = atEnd ? 3.0f : 12.0f;
+        Point at = { a.x + (b.x - a.x) / length * in, a.y + (b.y - a.y) / length * in };
+        // Its bottom beam under the floor, all along its depth where the passage slopes.
+        float dx = (b.x - a.x) / length * (GATE.hi[0] - GATE.lo[0]) / 2, dy = (b.y - a.y) / length * (GATE.hi[0] - GATE.lo[0]) / 2;
+        float h = Height(at.x, at.y), low = std::min(Height(at.x - dx, at.y - dy), Height(at.x + dx, at.y + dy));
+        out.push_back(Place(GATE, at, std::atan2(b.y - a.y, b.x - a.x) * 180 / PI, h, 8 + std::max(0.0f, h - low)));
+    };
+    for (int i : { 0, 2, 3, 5, 6 }) {
+        gate(PASSAGES[i], false);
+    }
+    for (int i : { 1, 2, 4, 5, 6 }) {
+        gate(PASSAGES[i], true);
+    }
+    // The Sun Court: steles half sunk into its walls between the ways, facing in.
+    const Room& court = ROOMS[0];
+    int n = 0;
+    for (float a : { 135.0f, 225.0f, 315.0f }) {
+        Point at = AtEdge(court, a, -5);
+        out.push_back(Place(STELES[n++ % 2], at, Facing(at.x, at.y, court.at), court.z, 1.0f));
+    }
+    // Toppled stones in the wings' last rooms, against their walls.
+    out.push_back(Place(FALLEN_B, AtEdge(ROOMS[3], 150, 6), 70, ROOMS[3].z, 0.5f));
+    out.push_back(Place(FALLEN_C, AtEdge(ROOMS[6], 115, 8), 200, ROOMS[6].z, 0.5f));
+    out.push_back(Place(FALLEN_H, AtEdge(ROOMS[5], 60, 6), 300, ROOMS[5].z, 0.5f));
+    return out;
+}
+
+// MAPGEN_GALLERY=1 Mods/mods.sh build: candidate buildings in two rows on the plateau, outside the raid, and a line
+// "GALLERY {shot}" for each to put in Tools/WebClient/shots/Gallery.json for wowPhoto('Gallery').
+const Candidate ROW_SOUTH[] = {
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnA.wmo", { -41.6f, -73.3f, -10.3f }, { 11.5f, 14.6f, 25.4f } },
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnB.wmo", { -21.0f, -18.9f, -1.0f }, { 25.7f, 12.4f, 22.0f } },
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnC.wmo", { -24.1f, -40.6f, -10.6f }, { 25.1f, 11.8f, 25.1f } },
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnD.wmo", { -11.8f, -15.7f, -0.5f }, { 11.4f, 10.8f, 58.3f } },
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnE.wmo", { -11.0f, -15.6f, -1.8f }, { 13.9f, 11.3f, 58.7f } },
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnF.wmo", { -13.3f, -11.5f, -0.9f }, { 13.3f, 11.5f, 41.5f } },
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnG.wmo", { -12.6f, -32.1f, 0.5f }, { 11.5f, 14.5f, 60.7f } },
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_columnH.wmo", { -27.1f, -22.1f, -3.3f }, { 12.9f, 12.1f, 58.3f } },
+    { "World\\wmo\\Dungeon\\KL_AhnQiraj\\Ahn_Qiraj_object02.wmo", { -11.3f, -23.7f, -20.5f }, { 11.3f, 23.7f, 20.5f } },
+    { "World\\wmo\\Kalimdor\\CollidableDoodads\\Silithus\\QuirajTower01.wmo", { -16.1f, 7.7f, -1.9f }, { -5.6f, 19.4f, 36.7f } },
+    { "World\\wmo\\Kalimdor\\CollidableDoodads\\Silithus\\QuirajTower02.wmo", { -5.2f, -5.5f, -0.9f }, { 5.2f, 5.5f, 42.3f } },
+    { "World\\wmo\\Kalimdor\\CollidableDoodads\\Silithus\\QuirajTower03.wmo", { -4.8f, -5.5f, -0.8f }, { 5.2f, 5.1f, 23.1f } },
+    { "World\\wmo\\Kalimdor\\CollidableDoodads\\Silithus\\QuirajTowerBase.wmo", { -4.9f, -6.2f, 0.0f }, { 6.4f, 5.5f, 14.9f } },
+    { "World\\wmo\\Northrend\\Buildings\\Titan\\TitanRoadTall01.wmo", { -19.1f, -24.0f, 0.0f }, { 19.1f, 24.0f, 102.5f } },
+    { "World\\wmo\\Northrend\\Buildings\\Titan\\TI_CircleWall_End.wmo", { -13.9f, -31.4f, -75.0f }, { 13.9f, 31.4f, 75.0f } },
+    { "World\\wmo\\Dungeon\\Ulduar\\Ulduar_Arch01.wmo", { -9.2f, -28.8f, -54.5f }, { 8.9f, 28.8f, 22.7f } },
+    { "World\\wmo\\Dungeon\\Ulduar\\Ulduar_Arch02.wmo", { -9.2f, -19.9f, -54.5f }, { 8.9f, 18.3f, 22.7f } },
+};
+const Candidate ROW_NORTH[] = {
+    { "World\\wmo\\Kalimdor\\Buildings\\TanarisRuins\\TanarisRuins01.wmo", { -42.3f, -64.1f, -12.1f }, { 45.8f, 76.3f, 20.7f } },
+    { "World\\wmo\\Kalimdor\\Buildings\\TanarisRuins\\TanarisRuins02.wmo", { -88.9f, -65.6f, -11.6f }, { 82.9f, 60.8f, 23.9f } },
+    { "World\\wmo\\Kalimdor\\Buildings\\TanarisRuins\\TanarisRuins04.wmo", { -87.5f, -84.1f, -12.4f }, { 74.8f, 90.8f, 58.0f } },
+    { "World\\wmo\\Kalimdor\\Buildings\\TanarisRuins\\TanarisRuins15.wmo", { -32.6f, -35.1f, -5.8f }, { 27.4f, 32.3f, 22.6f } },
+    { "World\\wmo\\Northrend\\Buildings\\Titan\\TI_Temple01.wmo", { -50.6f, -61.8f, -73.4f }, { 50.6f, 61.8f, 73.4f } },
+    { "World\\wmo\\Northrend\\Buildings\\Titan\\TI_CircleWall.wmo", { -43.6f, -44.4f, -74.3f }, { 43.6f, 44.4f, 74.3f } },
+    { "World\\wmo\\Northrend\\Buildings\\Titan\\Titan_Dome.wmo", { -33.4f, -31.2f, -28.2f }, { 33.4f, 31.2f, 29.6f } },
+};
+
+// Lays a row out along y from -460 with its middles on line x; prints a photo.js shot for each, looking at it from
+// the raid's side (towards -x when facing is 180, +x when 0).
+template <size_t N>
+void Row(std::vector<Building>& out, const Candidate (&row)[N], float line, float facing, const char* prefix) {
+    float y = -460;
+    for (size_t i = 0; i < N; i++) {
+        const Candidate& c = row[i];
+        Building b = { c.model, { line - (c.lo[0] + c.hi[0]) / 2, y - c.lo[1] }, 0, -180, 0, 0,
+                       { c.lo[0], c.lo[1], c.lo[2] }, { c.hi[0], c.hi[1], c.hi[2] } };
+        b.z = Height(line, b.at.y + (c.lo[1] + c.hi[1]) / 2);
+        out.push_back(b);
+        float size = std::max({ c.hi[0] - c.lo[0], c.hi[1] - c.lo[1], c.hi[2] - std::max(c.lo[2], 0.0f) });
+        float d = size * 1.1f + 15;
+        float cy = b.at.y + (c.lo[1] + c.hi[1]) / 2, top = b.z + c.hi[2];
+        float cx = line + (facing == 0 ? -1 : 1) * ((c.hi[0] - c.lo[0]) / 2 + d);
+        float cz = b.z + (top - b.z) * 0.6f + d * 0.3f;
+        float pitch = -std::atan2(cz - (b.z + (top - b.z) * 0.4f), d + (c.hi[0] - c.lo[0]) / 2) * 180 / PI;
+        const char* name = std::strrchr(c.model, '\\') + 1;
+        printf("GALLERY { \"name\": \"%s%02zu_%.*s\", \"map\": 801, \"x\": %.0f, \"y\": %.0f, \"z\": %.0f, \"yaw\": %.0f, \"pitch\": %.0f },\n",
+               prefix, i, int(std::strlen(name) - 4), name, cx, cy, cz, facing, pitch);
+        y += c.hi[1] - c.lo[1] + 18;
+    }
+}
+
+std::vector<Building> Gallery() {
+    std::vector<Building> out;
+    Row(out, ROW_SOUTH, -420, 180, "s");
+    Row(out, ROW_NORTH, 420, 0, "n");
+    return out;
+}
+
+// The light: one drowned dusk all day long, in LightIntBand's order (DayNight::LoadLightingBands), as 0xRRGGBB.
+const uint32_t DUSK[18] = {
+    0xD8935A, // sunlight on everything: a low orange sun
+    0x4A4C6A, // ambient: cool violet shade
+    0x161B3A, // sky: top
+    0x2F3060, //      middle
+    0x6E4F72, //      towards the horizon
+    0xC27A5E, //      above the horizon
+    0xE8A468, //      horizon
+    0x6E5560, // fog
+    0x404050, // shadows
+    0xFFB868, // sun
+    0xFF8C48, // sun halo
+    0x5A4258, // clouds: shade
+    0xD08A6A, //         lit
+    0x3A2E44, //         base
+    0x2C5248, // water: river near
+    0x10282A, //        river far
+    0x2C5248, //        ocean near
+    0x10282A, //        ocean far
+};
+const float FOG_END = 340;     // yards
+const float FOG_START = 0.25f; // of the fog's end
+const float CLOUDS = 0.35f;    // density
+const float GLOW = 0.35f;      // bloom strength (CGxDeviceWebGl::PostProcessWorld)
+
+// Zul'Farrak's light, turned into ours: a Light.dbc row for the whole map (no position) whose clear-weather params
+// and their 18 colour and 6 float bands are new rows with constant values.
+void Light(Dbcs& dbcs) {
+    Dbc& lights = dbcs.light;
+    int32_t template_ = -1;
+    uint32_t lightId = 0;
+    for (uint32_t i = 0; i < lights.Count(); i++) {
+        lightId = std::max(lightId, lights.Get(i, 0) + 1);
+        if (lights.Get(i, 1) == TEMPLATE_MAP_ID && !lights.Get(i, 2) && !lights.Get(i, 3) && !lights.Get(i, 4)) {
+            template_ = int32_t(i);
+        }
+    }
+    std::vector<uint32_t> light = lights.Row(uint32_t(template_ < 0 ? 0 : template_));
+    uint32_t paramsId = 0;
+    for (uint32_t i = 0; i < dbcs.lightParams.Count(); i++) {
+        paramsId = std::max(paramsId, dbcs.lightParams.Get(i, 0) + 1);
+    }
+    std::vector<uint32_t> params = dbcs.lightParams.Row(uint32_t(dbcs.lightParams.Find(0, light[7])));
+    params[0] = paramsId;
+    params[1] = 0; // no sky highlight
+    params[2] = 0; // no skybox
+    std::memcpy(&params[4], &GLOW, 4);
+    dbcs.lightParams.Put(params);
+    light[0] = lightId;
+    light[1] = MAP_ID;
+    light[7] = paramsId; // clear weather; the others (underwater, storms, death) stay Zul'Farrak's
+
+    for (uint32_t band = 0; band < 18; band++) {
+        std::vector<uint32_t> row(34, 0);
+        row[0] = band + 18 * paramsId - 17;
+        row[1] = 1; // one value, at time 0
+        row[18] = DUSK[band];
+        dbcs.lightIntBand.Put(row);
+    }
+    const float floats[6] = { FOG_END * 36, FOG_START, 0, CLOUDS, 0, 0 };
+    for (uint32_t band = 0; band < 6; band++) {
+        std::vector<uint32_t> row(34, 0);
+        row[0] = band + 6 * paramsId - 5;
+        row[1] = 1;
+        std::memcpy(&row[18], &floats[band], 4);
+        dbcs.lightFloatBand.Put(row);
+    }
+    lights.Put(light);
+}
+
+// Zul'Farrak's rows, turned into ours: the map, its zone and subzones, its one difficulty and its light.
 void Rows(Dbcs& dbcs) {
+    Light(dbcs);
     Dbc& map = dbcs.map;
     std::vector<uint32_t> row = map.Row(uint32_t(map.Find(0, TEMPLATE_MAP_ID)));
     row[0] = MAP_ID;
@@ -415,6 +658,11 @@ MapSpec DrownedSun() {
     spec.area = AreaAt;
     spec.liquidType = LIQUID_WATER;
     spec.doodads = Doodads();
+    spec.buildings = Buildings();
+    if (std::getenv("MAPGEN_GALLERY")) {
+        std::vector<Building> gallery = Gallery();
+        spec.buildings.insert(spec.buildings.end(), gallery.begin(), gallery.end());
+    }
     spec.rows = Rows;
     spec.planMinX = -280;
     spec.planMaxX = 300;

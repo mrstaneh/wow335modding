@@ -28,7 +28,7 @@
     const { shots } = await (await fetch(`shots/${list}.json?${Date.now()}`)).json();
     const saved = [];
     await say('.gm fly on');
-    await lua('UIParent:Hide()');
+    await lua('UIParent:Hide() SetCursorVisible(false)');
     try {
       for (const shot of shots) {
         if (only && !only.includes(shot.name)) continue;
@@ -41,7 +41,7 @@
         saved.push(response.ok ? await response.text() : `${shot.name}: ${await response.text()}`);
       }
     } finally {
-      await lua('UIParent:Show()');
+      await lua('UIParent:Show() SetCursorVisible(true)');
     }
     return saved;
   };

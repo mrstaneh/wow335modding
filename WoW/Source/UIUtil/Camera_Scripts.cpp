@@ -3,6 +3,7 @@
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
 #include "Engine/Source/Frame/CSimpleTop.h"
 #include "Engine/Source/FrameScript/FrameScript.h"
+#include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/FrameScript/FrameScript_Object.h"
 #include "Engine/Source/lua-5.1/src/lauxlib.h"
 #include "Engine/Source/lua-5.1/src/lua.h"
@@ -290,9 +291,17 @@ static int32_t Script_SetCameraPose(lua_State* L) {
     return 0;
 }
 
+// wow335modding: SetCursorVisible(visible), like the login screen's ShowCursor/HideCursor, so the photo tool's shots
+// leave the mouse cursor out.
+static int32_t Script_SetCursorVisible(lua_State* L) {
+    g_theGxDevicePtr->CursorSetVisible(lua_toboolean(L, 1));
+    return 0;
+}
+
 // STATIC: 0x00AD2060
 static FrameScript_Method s_ScriptFunctions[] = {
     { "SetCameraPose", &Script_SetCameraPose },
+    { "SetCursorVisible", &Script_SetCursorVisible },
     { "CameraZoomIn", &Script_CameraZoomIn },
     { "CameraZoomOut", &Script_CameraZoomOut },
     { "MoveViewInStart", &Script_MoveViewInStart },

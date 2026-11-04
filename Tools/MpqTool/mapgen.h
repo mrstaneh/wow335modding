@@ -65,6 +65,7 @@ struct Dbc {
 
 struct Dbcs {
     Dbc map, areaTable, mapDifficulty;
+    Dbc light, lightParams, lightIntBand, lightFloatBand; // a map's own light: Light.dbc row -> params -> bands
 };
 
 struct MapSpec {

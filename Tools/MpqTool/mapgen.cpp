@@ -1,5 +1,5 @@
 // MapGen: writes the custom maps (a WDT plus a block of ADT tiles each) and their DBC rows.
-//   MapGen <outdir> <folder with the original Map.dbc, AreaTable.dbc and MapDifficulty.dbc>
+//   MapGen <outdir> <folder with the original DBCs of Mods/mods.sh DBCS>
 // Output goes to <outdir>/World/Maps/<map>/ and <outdir>/DBFilesClient/, ready for MpqTool pack. The maps themselves are
 // in mapgen_testmap.cpp and mapgen_drownedsun.cpp.
 #include <algorithm>
@@ -704,14 +704,17 @@ static void Plan(const MapSpec& spec, const fs::path& dir) {
 
 int main(int argc, char** argv) {
     if (argc != 3 && argc != 4) {
-        fprintf(stderr, "usage: MapGen <outdir> <folder with the original Map.dbc, AreaTable.dbc and MapDifficulty.dbc> [plan dir]\n");
+        fprintf(stderr, "usage: MapGen <outdir> <folder with the original DBCs of Mods/mods.sh DBCS> [plan dir]\n");
         return 1;
     }
     fs::path out = argv[1];
     fs::path dbcIn = argv[2];
     Dbcs dbcs;
     if (!Load(dbcs.map, dbcIn / "Map.dbc", 66, 264) || !Load(dbcs.areaTable, dbcIn / "AreaTable.dbc", 36, 144) ||
-        !Load(dbcs.mapDifficulty, dbcIn / "MapDifficulty.dbc", 23, 92)) {
+        !Load(dbcs.mapDifficulty, dbcIn / "MapDifficulty.dbc", 23, 92) || !Load(dbcs.light, dbcIn / "Light.dbc", 15, 60) ||
+        !Load(dbcs.lightParams, dbcIn / "LightParams.dbc", 9, 36) ||
+        !Load(dbcs.lightIntBand, dbcIn / "LightIntBand.dbc", 34, 136) ||
+        !Load(dbcs.lightFloatBand, dbcIn / "LightFloatBand.dbc", 34, 136)) {
         return 1;
     }
 
@@ -736,5 +739,9 @@ int main(int argc, char** argv) {
     Save(dbcs.map, out / "DBFilesClient" / "Map.dbc");
     Save(dbcs.areaTable, out / "DBFilesClient" / "AreaTable.dbc");
     Save(dbcs.mapDifficulty, out / "DBFilesClient" / "MapDifficulty.dbc");
+    Save(dbcs.light, out / "DBFilesClient" / "Light.dbc");
+    Save(dbcs.lightParams, out / "DBFilesClient" / "LightParams.dbc");
+    Save(dbcs.lightIntBand, out / "DBFilesClient" / "LightIntBand.dbc");
+    Save(dbcs.lightFloatBand, out / "DBFilesClient" / "LightFloatBand.dbc");
     return 0;
 }
