@@ -1,3 +1,103 @@
+diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.lua work/Interface/FrameXML/VideoOptionsPanels.lua
+--- orig/Interface/FrameXML/VideoOptionsPanels.lua
++++ work/Interface/FrameXML/VideoOptionsPanels.lua
+@@ -1,5 +1,11 @@
+ -- if you change something here you probably want to change the glue version too
+ 
++-- wow335modding: the browser build's pass over the 3D world (postSharpen, postVibrance)
++WEB_SHARPENING = "Sharpening";
++OPTION_TOOLTIP_WEB_SHARPENING = "Sharpens textures and edges of the world, without halos. The interface is left as it is.";
++WEB_VIBRANCE = "Color Vibrance";
++OPTION_TOOLTIP_WEB_VIBRANCE = "Livens up muted colors of the world, leaving colors that are already strong mostly alone.";
++
+ local OPTIONS_FARCLIP_MIN = 177;
+ local OPTIONS_FARCLIP_MAX = 1277;
+ 
+@@ -391,6 +397,8 @@
+ 	extShadowQuality = { text = "SHADOW_QUALITY", minValue = 0, maxValue = 4, valueStep = 1 },
+ 	textureFilteringMode = { text = "ANISOTROPIC", minValue = 0, maxValue = 5, valueStep = 1, gameRestart = 1, tooltipOwnerPoint = "TOPLEFT", tooltipRequirement = OPTION_RESTART_REQUIREMENT, },
+ 	weatherDensity = { text = "WEATHER_DETAIL", minValue = 0, maxValue = 3, valueStep = 1, tooltipOwnerPoint = "TOPLEFT", },
++	postSharpen = { text = "WEB_SHARPENING", minValue = 0, maxValue = 1, valueStep = 0.1, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", },
++	postVibrance = { text = "WEB_VIBRANCE", minValue = 0, maxValue = 1, valueStep = 0.05, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", },
+ 	componentTextureLevel = { text = "PLAYER_DETAIL", minValue = 8, maxValue = 9, valueStep = 1, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", gameRestart = 1, tooltipRequirement = OPTION_RESTART_REQUIREMENT, },
+ 	specular = { text = "TERRAIN_HIGHLIGHTS", logout = 1, tooltipRequirement = OPTION_LOGOUT_REQUIREMENT, },
+ 	ffxGlow = { text = "FULL_SCREEN_GLOW", },
+diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.xml work/Interface/FrameXML/VideoOptionsPanels.xml
+--- orig/Interface/FrameXML/VideoOptionsPanels.xml
++++ work/Interface/FrameXML/VideoOptionsPanels.xml
+@@ -759,8 +759,62 @@
+ 					<OnValueChanged function="VideoOptionsEffectsPanelSlider_OnValueChanged"/>
+ 				</Scripts>
+ 			</Slider>	
++			<!-- wow335modding: browser build, the pass over the 3D world (CGxDeviceWebGl::PostProcessWorld) -->
++			<Slider name="$parentSharpening" inherits="OptionsSliderTemplate">
++				<Size x="112" y="17"/>
++				<Anchors>
++					<Anchor point="TOPLEFT" relativeTo="$parentPlayerTexture" relativePoint="BOTTOMLEFT">
++						<Offset x="0" y="-24"/>
++					</Anchor>
++				</Anchors>
++				<Scripts>
++					<OnLoad>
++						self.type = CONTROLTYPE_SLIDER;
++						self.cvar = "postSharpen";
++						self.SetDisplayValue = self.SetValue;
++						self.SetValue = function (self, value)
++							self:SetDisplayValue(value);
++							BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
++						end
++						_G[self:GetName().."Text"]:SetFontObject("GameFontNormalSmall");
++						if ( not pcall(GetCVar, self.cvar) ) then -- the Windows client has no such setting
++							self:Hide();
++							return;
++						end
++						BlizzardOptionsPanel_RegisterControl(self, self:GetParent());
++					</OnLoad>
++					<OnValueChanged function="VideoOptionsEffectsPanelSlider_OnValueChanged"/>
++				</Scripts>
++			</Slider>
++			<!-- wow335modding: browser build, the pass over the 3D world (CGxDeviceWebGl::PostProcessWorld) -->
++			<Slider name="$parentVibrance" inherits="OptionsSliderTemplate">
++				<Size x="112" y="17"/>
++				<Anchors>
++					<Anchor point="TOPLEFT" relativeTo="$parentSharpening" relativePoint="BOTTOMLEFT">
++						<Offset x="0" y="-24"/>
++					</Anchor>
++				</Anchors>
++				<Scripts>
++					<OnLoad>
++						self.type = CONTROLTYPE_SLIDER;
++						self.cvar = "postVibrance";
++						self.SetDisplayValue = self.SetValue;
++						self.SetValue = function (self, value)
++							self:SetDisplayValue(value);
++							BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
++						end
++						_G[self:GetName().."Text"]:SetFontObject("GameFontNormalSmall");
++						if ( not pcall(GetCVar, self.cvar) ) then -- the Windows client has no such setting
++							self:Hide();
++							return;
++						end
++						BlizzardOptionsPanel_RegisterControl(self, self:GetParent());
++					</OnLoad>
++					<OnValueChanged function="VideoOptionsEffectsPanelSlider_OnValueChanged"/>
++				</Scripts>
++			</Slider>
+ 			<Frame name="$parentShaders" inherits="OptionsBoxTemplate">
+-				<Size x="380" y="76"/>
++				<Size x="262" y="76"/> <!-- wow335modding: was 380, the third column holds the browser build's sliders -->
+ 				<Anchors>
+ 					<Anchor point="BOTTOMLEFT">
+ 						<Offset x="16" y="8"/>
+@@ -807,7 +861,7 @@
+ 			<CheckButton name="$parentDeathEffect" inherits="VideoOptionsSmallCheckButtonTemplate">
+ 				<Anchors>
+ 					<Anchor point="TOPLEFT" relativeTo="$parentShaders">
+-						<Offset x="180" y="-8"/>
++						<Offset x="132" y="-8"/>
+ 					</Anchor>
+ 				</Anchors>
+ 				<Scripts>
 diff -ruN orig/Interface/GlueXML/AccountLogin.lua work/Interface/GlueXML/AccountLogin.lua
 --- orig/Interface/GlueXML/AccountLogin.lua
 +++ work/Interface/GlueXML/AccountLogin.lua
@@ -322,3 +422,103 @@ diff -ruN orig/Interface/GlueXML/GlueStrings.lua work/Interface/GlueXML/GlueStri
  WEB_SITE = "WoW Website";
  WHISPER_FROM = "Whisper from %s";
  WIDESCREEN_TAG = "(Wide)";
+diff -ruN orig/Interface/GlueXML/VideoOptionsPanels.lua work/Interface/GlueXML/VideoOptionsPanels.lua
+--- orig/Interface/GlueXML/VideoOptionsPanels.lua
++++ work/Interface/GlueXML/VideoOptionsPanels.lua
+@@ -1,5 +1,11 @@
+ -- if you change something here you probably want to change the frame version too
+ 
++-- wow335modding: the browser build's pass over the 3D world (postSharpen, postVibrance)
++WEB_SHARPENING = "Sharpening";
++OPTION_TOOLTIP_WEB_SHARPENING = "Sharpens textures and edges of the world, without halos. The interface is left as it is.";
++WEB_VIBRANCE = "Color Vibrance";
++OPTION_TOOLTIP_WEB_VIBRANCE = "Livens up muted colors of the world, leaving colors that are already strong mostly alone.";
++
+ local OPTIONS_FARCLIP_MIN = 177;
+ local OPTIONS_FARCLIP_MAX = 1277;
+ 
+@@ -385,6 +391,8 @@
+ 	extShadowQuality = { text = "SHADOW_QUALITY", minValue = 0, maxValue = 4, valueStep = 1 },	
+ 	textureFilteringMode = { text = "ANISOTROPIC", minValue = 0, maxValue = 5, valueStep = 1, gameRestart = 1, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", tooltipRequirement = OPTION_RESTART_REQUIREMENT, },
+ 	weatherDensity = { text = "WEATHER_DETAIL", minValue = 0, maxValue = 3, valueStep = 1, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", },
++	postSharpen = { text = "WEB_SHARPENING", minValue = 0, maxValue = 1, valueStep = 0.1, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", },
++	postVibrance = { text = "WEB_VIBRANCE", minValue = 0, maxValue = 1, valueStep = 0.05, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", },
+ 	componentTextureLevel = { text = "PLAYER_DETAIL", minValue = 8, maxValue = 9, valueStep = 1, tooltipPoint = "BOTTOMRIGHT", tooltipOwnerPoint = "TOPLEFT", gameRestart = 1, tooltipRequirement = OPTION_RESTART_REQUIREMENT, },
+ 	specular = { text = "TERRAIN_HIGHLIGHTS"},
+ 	ffxGlow = { text = "FULL_SCREEN_GLOW", },
+diff -ruN orig/Interface/GlueXML/VideoOptionsPanels.xml work/Interface/GlueXML/VideoOptionsPanels.xml
+--- orig/Interface/GlueXML/VideoOptionsPanels.xml
++++ work/Interface/GlueXML/VideoOptionsPanels.xml
+@@ -730,8 +730,62 @@
+ 					<OnValueChanged function="VideoOptionsEffectsPanelSlider_OnValueChanged"/>
+ 				</Scripts>
+ 			</Slider>	
++			<!-- wow335modding: browser build, the pass over the 3D world (CGxDeviceWebGl::PostProcessWorld) -->
++			<Slider name="$parentSharpening" inherits="OptionsSliderTemplate">
++				<Size x="112" y="17"/>
++				<Anchors>
++					<Anchor point="TOPLEFT" relativeTo="$parentPlayerTexture" relativePoint="BOTTOMLEFT">
++						<Offset x="0" y="-24"/>
++					</Anchor>
++				</Anchors>
++				<Scripts>
++					<OnLoad>
++						self.type = CONTROLTYPE_SLIDER;
++						self.cvar = "postSharpen";
++						self.SetDisplayValue = self.SetValue;
++						self.SetValue = function (self, value)
++							self:SetDisplayValue(value);
++							BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
++						end
++						_G[self:GetName().."Text"]:SetFontObject("OptionsFontSmall");
++						if ( not pcall(GetCVar, self.cvar) ) then -- the Windows client has no such setting
++							self:Hide();
++							return;
++						end
++						BlizzardOptionsPanel_RegisterControl(self, self:GetParent());
++					</OnLoad>
++					<OnValueChanged function="VideoOptionsEffectsPanelSlider_OnValueChanged"/>
++				</Scripts>
++			</Slider>
++			<!-- wow335modding: browser build, the pass over the 3D world (CGxDeviceWebGl::PostProcessWorld) -->
++			<Slider name="$parentVibrance" inherits="OptionsSliderTemplate">
++				<Size x="112" y="17"/>
++				<Anchors>
++					<Anchor point="TOPLEFT" relativeTo="$parentSharpening" relativePoint="BOTTOMLEFT">
++						<Offset x="0" y="-24"/>
++					</Anchor>
++				</Anchors>
++				<Scripts>
++					<OnLoad>
++						self.type = CONTROLTYPE_SLIDER;
++						self.cvar = "postVibrance";
++						self.SetDisplayValue = self.SetValue;
++						self.SetValue = function (self, value)
++							self:SetDisplayValue(value);
++							BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
++						end
++						_G[self:GetName().."Text"]:SetFontObject("OptionsFontSmall");
++						if ( not pcall(GetCVar, self.cvar) ) then -- the Windows client has no such setting
++							self:Hide();
++							return;
++						end
++						BlizzardOptionsPanel_RegisterControl(self, self:GetParent());
++					</OnLoad>
++					<OnValueChanged function="VideoOptionsEffectsPanelSlider_OnValueChanged"/>
++				</Scripts>
++			</Slider>
+ 			<Frame name="$parentShaders" inherits="OptionsBoxTemplate">
+-				<Size x="380" y="76"/>
++				<Size x="262" y="76"/> <!-- wow335modding: was 380, the third column holds the browser build's sliders -->
+ 				<Anchors>
+ 					<Anchor point="BOTTOMLEFT">
+ 						<Offset x="16" y="8"/>
+@@ -779,7 +833,7 @@
+ 			<CheckButton name="$parentDeathEffect" inherits="VideoOptionsSmallCheckButtonTemplate">
+ 				<Anchors>
+ 					<Anchor point="TOPLEFT" relativeTo="$parentShaders">
+-						<Offset x="180" y="-8"/>
++						<Offset x="132" y="-8"/>
+ 					</Anchor>
+ 				</Anchors>
+ 				<Scripts>

@@ -79,6 +79,10 @@ static EmergencyMem s_emergencyMem[GxPoolTargets_Last];
 static TSGrowableArray<uint8_t> s_texBuffer;
 static bool s_s3tc;
 static bool s_anisotropic;
+// wow335modding: the settings of PostProcessWorld, registered with the device so the video options find them on the
+// login screen already
+static CVar* s_postSharpen;
+static CVar* s_postVibrance;
 
 // The fixed-function pipeline as one program. Both stages declare the same uniform block (see CGxDeviceWebGl::Uniforms).
 static const char* s_uniformBlock = R"(#version 300 es
@@ -505,6 +509,8 @@ int32_t CGxDeviceWebGl::IDevAttachGlContext(const CGxFormat& format) {
     this->m_context = 1;
     this->ISetCaps();
 
+    s_postSharpen = CVar::Register("postSharpen", "Sharpen the 3D world, 0 (off) to 1", 1, "0.5", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
+    s_postVibrance = CVar::Register("postVibrance", "Liven up muted colours of the 3D world, 0 (off) to 1", 1, "0.25", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
     this->m_program = CreateProgram();
     glGenBuffers(1, &this->m_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, this->m_ubo);
@@ -1901,10 +1907,8 @@ void main() {
 )";
 
 void CGxDeviceWebGl::PostProcessWorld() {
-    static CVar* s_sharpen = CVar::Register("postSharpen", "Sharpen the 3D world, 0 (off) to 1", 1, "0.5", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
-    static CVar* s_vibrance = CVar::Register("postVibrance", "Liven up muted colours of the 3D world, 0 (off) to 1", 1, "0.25", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
-    float sharpen = s_sharpen->m_floatValue;
-    float vibrance = s_vibrance->m_floatValue;
+    float sharpen = s_postSharpen->m_floatValue;
+    float vibrance = s_postVibrance->m_floatValue;
 
     GLint drawFbo = 0;
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
