@@ -168,7 +168,7 @@ INSERT INTO `gameobject_template` (`entry`, `type`, `displayId`, `name`, `size`,
 (500004, 10, 6884, 'Feathers of Truth', 2, 0, 0, 0, 'go_weighing'),
 (500005, 10, 7928, 'Left Pan', 3, 0, 0, 0, 'go_weighing'),
 (500006, 10, 7928, 'Right Pan', 3, 0, 0, 0, 'go_weighing'),
-(500007, 5, 6358, 'Canopic Jar', 3, 0, 0, 0, ''),
+(500007, 5, 9700, 'Canopic Jar', 1.6, 0, 0, 0, ''),
 (500012, 3, 259, 'Anpuet''s Hoard', 1.5, 57, 500012, 1, '');
 
 -- The Scales stand in the middle of their room (0, 112), the piles by the way in; a jar stands at each of Anpuet's

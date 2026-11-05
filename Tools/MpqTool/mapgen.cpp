@@ -714,7 +714,8 @@ int main(int argc, char** argv) {
         !Load(dbcs.mapDifficulty, dbcIn / "MapDifficulty.dbc", 23, 92) || !Load(dbcs.light, dbcIn / "Light.dbc", 15, 60) ||
         !Load(dbcs.lightParams, dbcIn / "LightParams.dbc", 9, 36) ||
         !Load(dbcs.lightIntBand, dbcIn / "LightIntBand.dbc", 34, 136) ||
-        !Load(dbcs.lightFloatBand, dbcIn / "LightFloatBand.dbc", 34, 136)) {
+        !Load(dbcs.lightFloatBand, dbcIn / "LightFloatBand.dbc", 34, 136) ||
+        !Load(dbcs.gameObjectDisplayInfo, dbcIn / "GameObjectDisplayInfo.dbc", 19, 76)) {
         return 1;
     }
 
@@ -743,5 +744,6 @@ int main(int argc, char** argv) {
     Save(dbcs.lightParams, out / "DBFilesClient" / "LightParams.dbc");
     Save(dbcs.lightIntBand, out / "DBFilesClient" / "LightIntBand.dbc");
     Save(dbcs.lightFloatBand, out / "DBFilesClient" / "LightFloatBand.dbc");
+    Save(dbcs.gameObjectDisplayInfo, out / "DBFilesClient" / "GameObjectDisplayInfo.dbc");
     return 0;
 }

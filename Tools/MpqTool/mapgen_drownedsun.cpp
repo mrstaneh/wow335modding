@@ -547,9 +547,32 @@ void Light(Dbcs& dbcs) {
     lights.Put(light);
 }
 
+// The raid's own models (Mods/DrownedSun/models, exported by Tools/ModelGen): GameObjectDisplayInfo rows, ids from
+// 9700 (the originals end at 9624), with the bounding box the exporter prints.
+struct ModelDisplay {
+    uint32_t id;
+    const char* model;
+    float lo[3], hi[3];
+};
+const ModelDisplay MODEL_DISPLAYS[] = {
+    { 9700, "World\\DrownedSun\\CanopicJar.mdx", { -0.32f, -0.32f, 0 }, { 0.32f, 0.32f, 1.17f } },
+};
+
+void ModelDisplays(Dbcs& dbcs) {
+    for (const ModelDisplay& d : MODEL_DISPLAYS) {
+        std::vector<uint32_t> row(19, 0); // id, model, 10 sounds, box min, box max, effect package
+        row[0] = d.id;
+        row[1] = dbcs.gameObjectDisplayInfo.AddString(d.model);
+        std::memcpy(&row[12], d.lo, sizeof(d.lo));
+        std::memcpy(&row[15], d.hi, sizeof(d.hi));
+        dbcs.gameObjectDisplayInfo.Put(row);
+    }
+}
+
 // Zul'Farrak's rows, turned into ours: the map, its zone and subzones, its one difficulty and its light.
 void Rows(Dbcs& dbcs) {
     Light(dbcs);
+    ModelDisplays(dbcs);
     Dbc& map = dbcs.map;
     std::vector<uint32_t> row = map.Row(uint32_t(map.Find(0, TEMPLATE_MAP_ID)));
     row[0] = MAP_ID;

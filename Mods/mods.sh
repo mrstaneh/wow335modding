@@ -12,7 +12,8 @@ DATA=${DATA:-bin/Win/Data}
 LOCALE=${LOCALE:-enUS}
 AC=${AC:-../azerothcore-wotlk/build/bin/RelWithDebInfo}
 MAP_IDS="800 801" # keep in sync with Tools/MpqTool/mapgen_*.cpp
-DBCS="Map AreaTable MapDifficulty Light LightParams LightIntBand LightFloatBand" # the DBCs MapGen adds rows to
+DBCS="Map AreaTable MapDifficulty Light LightParams LightIntBand LightFloatBand GameObjectDisplayInfo" # the DBCs MapGen adds rows to
+BLENDER=${BLENDER:-"/c/Program Files/Blender Foundation/Blender 5.1/blender.exe"} # exports Mods/*/models, Tools/ModelGen
 TOOL=build/MpqTool/Release/MpqTool.exe
 MAPGEN=build/MpqTool/Release/MapGen.exe
 PATCH=Mods/interface.patch
@@ -68,6 +69,13 @@ build)
     cp -r "$WORK/work" "$WORK/pack"
     # the plan views (build/mods/plan) are for Tools/WebClient/plan.html
     "$MAPGEN" "$WORK/pack" "$WORK/orig/DBFilesClient" "$WORK/plan"
+    # Our models: Mods/<Mod>/models/<Name>.blend -> World\<Mod>\<Name>.m2, its skin and textures
+    for blend in Mods/*/models/*.blend; do
+        [ -e "$blend" ] || continue
+        mod=$(basename "$(dirname "$(dirname "$blend")")")
+        "$BLENDER" -b "$blend" --python Tools/ModelGen/export_m2.py -- "$WORK/pack" "World\\$mod" | grep '^exported' ||
+            { echo "exporting $blend failed"; exit 1; }
+    done
     rm -f "$WORK/patch.MPQ"
     "$TOOL" pack "$WORK/patch.MPQ" "$WORK/pack"
     cp "$WORK/patch.MPQ" "$DATA/$LOCALE/patch-$LOCALE-4.MPQ"
