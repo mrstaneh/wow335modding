@@ -3,7 +3,7 @@
 -- 500000+, creatures 500100+, spawns 5800000+. The scripts are in Mods/DrownedSun/mod-drowned-sun.
 
 DELETE FROM `instance_template` WHERE `map` = 801;
-INSERT INTO `instance_template` (`map`, `parent`, `script`, `allowMount`) VALUES (801, 800, 'instance_drowned_sun', 0);
+INSERT INTO `instance_template` (`map`, `parent`, `script`, `allowMount`) VALUES (801, 800, 'instance_drowned_sun', 1); -- mounts: the Sun Court only (instance script)
 
 -- The portals: goobers that send whoever uses them through (SmartAI: on use, teleport the user). They wear the Dalaran
 -- portal model (4394); the classic instance portal (9527) is all particles and draws nothing in this client.
@@ -38,7 +38,7 @@ INSERT INTO `creature_template` (`entry`, `name`, `subname`, `minlevel`, `maxlev
                                  `speed_run`, `detection_range`, `rank`, `DamageModifier`, `BaseAttackTime`,
                                  `RangeAttackTime`, `unit_class`, `type`, `HealthModifier`, `ArmorModifier`,
                                  `RegenHealth`, `flags_extra`, `ScriptName`) VALUES
-(500100, 'Sebekhti', 'The River''s Jaw', 83, 83, 2, 14, 1, 1.14286, 40, 3, 6, 2000, 2000, 1, 1, 30, 1, 1, 1, 'boss_sebekhti'),
+(500100, 'Sebekhti', 'The River''s Jaw', 83, 83, 2, 14, 1, 1.14286, 40, 3, 4, 2000, 2000, 1, 1, 30, 1, 1, 1, 'boss_sebekhti'),
 (500101, 'Nave Snapjaw', '', 80, 80, 2, 14, 1, 1.14286, 30, 0, 1.5, 2000, 2000, 1, 1, 2, 1, 1, 0, '');
 
 DELETE FROM `creature_template_model` WHERE `CreatureID` IN (500100, 500101);
@@ -86,7 +86,7 @@ INSERT INTO `creature_template` (`entry`, `name`, `subname`, `minlevel`, `maxlev
                                  `speed_run`, `detection_range`, `rank`, `DamageModifier`, `BaseAttackTime`,
                                  `RangeAttackTime`, `unit_class`, `unit_flags`, `type`, `HealthModifier`, `ArmorModifier`,
                                  `RegenHealth`, `flags_extra`, `ScriptName`) VALUES
-(500102, 'Khepret', 'Who Rolls the Sun', 83, 83, 2, 14, 1, 1.14286, 40, 3, 6, 2000, 2000, 1, 0, 1, 30, 1, 1, 1, 'boss_khepret'),
+(500102, 'Khepret', 'Who Rolls the Sun', 83, 83, 2, 14, 1, 1.14286, 40, 3, 4, 2000, 2000, 1, 0, 1, 30, 1, 1, 1, 'boss_khepret'),
 (500103, 'Khepret''s Sun', '', 83, 83, 2, 14, 1, 1.4, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, ''),
 (500104, 'Rolling Sun', '', 80, 80, 2, 14, 1, 1, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, 'npc_rolling_sun'),
 (500105, 'Sun''s Path', '', 80, 80, 2, 14, 1, 1, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, 'npc_sun_trail'),
@@ -129,3 +129,134 @@ INSERT INTO `creature_template_addon` (`entry`, `bytes1`, `auras`) VALUES
 (500103, 50331648, '71706'),
 (500104, 50331648, '71706'),
 (500105, 0, '71706');
+
+-- The Hall of Weighing (milestone 3): the Scales' piles and pans, the mummies that walk them, Anpuet among his canopic
+-- jars, the linen he wraps players in, the natron he throws, and his hoard. Stand-in models: an Anubisath Sentinel
+-- (15347), Maexxna's web wrap (16213), the Mummified Atal'ai (4769), an unseen spirit (11686) in a jar (6358) for each
+-- canopic jar, offering bowls (7928) for the pans, gold coins (2614) for the stones and leaves (6884) for the feathers,
+-- and a purple acid cloud (70108) for the natron.
+DELETE FROM `creature_template` WHERE `entry` BETWEEN 500107 AND 500111;
+INSERT INTO `creature_template` (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `exp`, `faction`, `speed_walk`,
+                                 `speed_run`, `detection_range`, `rank`, `DamageModifier`, `BaseAttackTime`,
+                                 `RangeAttackTime`, `unit_class`, `unit_flags`, `type`, `HealthModifier`, `ArmorModifier`,
+                                 `RegenHealth`, `flags_extra`, `ScriptName`) VALUES
+(500107, 'Anpuet', 'The Embalmer', 83, 83, 2, 14, 1, 1.14286, 40, 3, 4, 2000, 2000, 1, 0, 6, 30, 1, 1, 1, 'boss_anpuet'),
+(500108, 'Linen Wrapping', '', 80, 80, 2, 14, 1, 1, 0, 0, 1, 2000, 2000, 1, 0, 10, 1.5, 1, 0, 0, 'npc_linen_wrap'),
+(500109, 'Natron', '', 80, 80, 2, 14, 1, 1, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, 'npc_natron'),
+(500110, 'Canopic Jar', '', 82, 82, 2, 14, 1, 1, 0, 1, 1, 2000, 2000, 1, 0, 10, 4, 1, 0, 0, ''),
+(500111, 'Wrapped Servant', '', 80, 80, 2, 14, 1, 1, 0, 0, 1, 2000, 2000, 1, 33554690, 6, 1, 1, 1, 2, '');
+
+DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 500107 AND 500111;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`) VALUES
+(500107, 0, 15347, 1, 1),
+(500108, 0, 16213, 1, 1),
+(500109, 0, 11686, 1, 1),
+(500110, 0, 11686, 2, 1),
+(500111, 0, 4769, 1.2, 1);
+
+DELETE FROM `creature_template_addon` WHERE `entry` = 500109;
+INSERT INTO `creature_template_addon` (`entry`, `auras`) VALUES (500109, '70108');
+
+DELETE FROM `creature` WHERE `guid` = 5800102;
+INSERT INTO `creature` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`,
+                        `orientation`, `spawntimesecs`) VALUES
+(5800102, 500107, 801, 1, 1, 0, 205, 20, 4.7124, 604800);
+
+DELETE FROM `gameobject_template` WHERE `entry` IN (500003, 500004, 500005, 500006, 500007, 500012);
+INSERT INTO `gameobject_template` (`entry`, `type`, `displayId`, `name`, `size`, `Data0`, `Data1`, `Data3`, `ScriptName`) VALUES
+(500003, 10, 2614, 'Stone Weights', 2, 0, 0, 0, 'go_weighing'),
+(500004, 10, 6884, 'Feathers of Truth', 2, 0, 0, 0, 'go_weighing'),
+(500005, 10, 7928, 'Left Pan', 3, 0, 0, 0, 'go_weighing'),
+(500006, 10, 7928, 'Right Pan', 3, 0, 0, 0, 'go_weighing'),
+(500007, 5, 6358, 'Canopic Jar', 3, 0, 0, 0, ''),
+(500012, 3, 259, 'Anpuet''s Hoard', 1.5, 57, 500012, 1, '');
+
+-- The Scales stand in the middle of their room (0, 112), the piles by the way in; a jar stands at each of Anpuet's
+-- jar spirits (JARS in hall_of_weighing.cpp).
+DELETE FROM `gameobject` WHERE `guid` BETWEEN 5800005 AND 5800012;
+INSERT INTO `gameobject` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`,
+                          `orientation`, `rotation2`, `rotation3`, `spawntimesecs`, `animprogress`, `state`) VALUES
+(5800005, 500003, 801, 1, 1, 6, 98, 20, 0, 0, 1, 0, 100, 1),
+(5800006, 500004, 801, 1, 1, -6, 98, 20, 0, 0, 1, 0, 100, 1),
+(5800007, 500005, 801, 1, 1, 14, 118, 20, 0, 0, 1, 0, 100, 1),
+(5800008, 500006, 801, 1, 1, -14, 118, 20, 0, 0, 1, 0, 100, 1),
+(5800009, 500007, 801, 1, 1, 28, 200, 20, 3.14, 1, 0, 0, 100, 1),
+(5800010, 500007, 801, 1, 1, -14, 224.2, 20, 5.24, -0.5, 0.866, 0, 100, 1),
+(5800011, 500007, 801, 1, 1, -26.3, 190.4, 20, 0.35, 0.174, 0.985, 0, 100, 1),
+(5800012, 500007, 801, 1, 1, 21.4, 182, 20, 2.44, 0.940, 0.342, 0, 100, 1);
+
+-- Two rolls from the same rings (item level 200 epics).
+DELETE FROM `gameobject_loot_template` WHERE `Entry` = 500012;
+INSERT INTO `gameobject_loot_template` (`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`,
+                                        `MinCount`, `MaxCount`, `Comment`) VALUES
+(500012, 37192, 0, 0, 0, 1, 1, 1, 1, 'Anpuet''s Hoard - Annhylde''s Ring'),
+(500012, 37642, 0, 0, 0, 1, 1, 1, 1, 'Anpuet''s Hoard - Hemorrhaging Circle'),
+(500012, 37694, 0, 0, 0, 1, 1, 1, 1, 'Anpuet''s Hoard - Band of Guile'),
+(500012, 37784, 0, 0, 0, 1, 1, 1, 1, 'Anpuet''s Hoard - Keystone Great-Ring'),
+(500012, 39141, 0, 0, 0, 1, 2, 1, 1, 'Anpuet''s Hoard - Deflection Band'),
+(500012, 39193, 0, 0, 0, 1, 2, 1, 1, 'Anpuet''s Hoard - Band of Neglected Pleas'),
+(500012, 39231, 0, 0, 0, 1, 2, 1, 1, 'Anpuet''s Hoard - Timeworn Silken Band'),
+(500012, 39244, 0, 0, 0, 1, 2, 1, 1, 'Anpuet''s Hoard - Ring of the Fated');
+
+-- The Eclipse Pit (milestone 3): the Lightless Way's braziers and their flames, Apepheth, his sunbeams, the marks where
+-- his coils burst up, the heart in his belly, and his hoard. Stand-in models: Hakkar's serpent (15295), an unseen
+-- carrier (11686) for the sunbeams (Freya's Unstable Sun Beam visual, 62216) and coil marks (a dust cloud, 43258), the
+-- Ball of Flame for brazier flames, the Heart of the Deconstructor (28887), the Shadowforge brazier (3411). The
+-- decoration creatures are friendly (faction 35) and can't be targeted.
+DELETE FROM `creature_template` WHERE `entry` BETWEEN 500112 AND 500116;
+INSERT INTO `creature_template` (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `exp`, `faction`, `speed_walk`,
+                                 `speed_run`, `detection_range`, `rank`, `DamageModifier`, `BaseAttackTime`,
+                                 `RangeAttackTime`, `unit_class`, `unit_flags`, `type`, `HealthModifier`, `ArmorModifier`,
+                                 `RegenHealth`, `flags_extra`, `ScriptName`) VALUES
+(500112, 'Apepheth', 'The Unlit Coil', 83, 83, 2, 14, 1, 1.14286, 45, 3, 4, 2000, 2000, 1, 0, 1, 30, 1, 1, 1, 'boss_apepheth'),
+(500113, 'Sunbeam', '', 80, 80, 2, 35, 1, 1, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, 'npc_sunbeam'),
+(500114, 'Stirring Ground', '', 80, 80, 2, 35, 1, 1, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, ''),
+(500115, 'Brazier Flame', '', 80, 80, 2, 35, 1, 1, 0, 0, 1, 2000, 2000, 1, 33554690, 10, 1, 1, 1, 2, ''),
+(500116, 'Heart of the Coil', '', 82, 82, 2, 14, 1, 1, 0, 1, 1, 2000, 2000, 1, 131072, 10, 1, 1, 0, 0, '');
+
+DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 500112 AND 500116;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`) VALUES
+(500112, 0, 15295, 1, 1),
+(500113, 0, 11686, 1, 1),
+(500114, 0, 11686, 1, 1),
+(500115, 0, 26767, 0.6, 1),
+(500116, 0, 28887, 1, 1);
+
+DELETE FROM `creature_template_addon` WHERE `entry` IN (500113, 500114, 500115);
+INSERT INTO `creature_template_addon` (`entry`, `auras`) VALUES
+(500113, '62216'),
+(500114, '43258'),
+(500115, '71706');
+
+DELETE FROM `creature` WHERE `guid` = 5800103;
+INSERT INTO `creature` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`,
+                        `orientation`, `spawntimesecs`) VALUES
+(5800103, 500112, 801, 1, 1, 235, 0, 0, 3.1416, 604800);
+
+DELETE FROM `gameobject_template` WHERE `entry` IN (500008, 500013);
+INSERT INTO `gameobject_template` (`entry`, `type`, `displayId`, `name`, `size`, `Data0`, `Data1`, `Data3`, `ScriptName`) VALUES
+(500008, 10, 3411, 'Brazier', 1.5, 0, 0, 0, 'go_lightless_brazier'),
+(500013, 3, 259, 'Apepheth''s Hoard', 1.5, 57, 500013, 1, '');
+
+-- The braziers, from MapGen's printout ("brazier at"); the instance tells them apart by position.
+DELETE FROM `gameobject` WHERE `guid` BETWEEN 5800013 AND 5800017;
+INSERT INTO `gameobject` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`,
+                          `orientation`, `rotation2`, `rotation3`, `spawntimesecs`, `animprogress`, `state`) VALUES
+(5800013, 500008, 801, 1, 1, 52, -4, 19.74, 0, 0, 1, 0, 100, 1),
+(5800014, 500008, 801, 1, 1, 80, 21, 14.97, 0, 0, 1, 0, 100, 1),
+(5800015, 500008, 801, 1, 1, 115, -19, 10.12, 0, 0, 1, 0, 100, 1),
+(5800016, 500008, 801, 1, 1, 150, 11, 5.09, 0, 0, 1, 0, 100, 1),
+(5800017, 500008, 801, 1, 1, 190, -4, 0, 0, 0, 1, 0, 100, 1);
+
+-- One roll from the trinkets, one from the rest of them (item level 200 epics).
+DELETE FROM `gameobject_loot_template` WHERE `Entry` = 500013;
+INSERT INTO `gameobject_loot_template` (`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`,
+                                        `MinCount`, `MaxCount`, `Comment`) VALUES
+(500013, 37254, 0, 0, 0, 1, 1, 1, 1, 'Apepheth''s Hoard - Super Simian Sphere'),
+(500013, 37835, 0, 0, 0, 1, 1, 1, 1, 'Apepheth''s Hoard - Je''Tze''s Bell'),
+(500013, 39229, 0, 0, 0, 1, 1, 1, 1, 'Apepheth''s Hoard - Embrace of the Spider'),
+(500013, 39257, 0, 0, 0, 1, 1, 1, 1, 'Apepheth''s Hoard - Loatheb''s Shadow'),
+(500013, 39292, 0, 0, 0, 1, 2, 1, 1, 'Apepheth''s Hoard - Repelling Charge'),
+(500013, 39388, 0, 0, 0, 1, 2, 1, 1, 'Apepheth''s Hoard - Spirit-World Glass'),
+(500013, 40430, 0, 0, 0, 1, 2, 1, 1, 'Apepheth''s Hoard - Majestic Dragon Figurine'),
+(500013, 40682, 0, 0, 0, 1, 2, 1, 1, 'Apepheth''s Hoard - Sundial of the Exiled');

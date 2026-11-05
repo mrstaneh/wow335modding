@@ -34,12 +34,12 @@ enum Spells
     SPELL_TAIL_SWEEP = 10101, // Knock Away
 };
 
-uint32 const HEALTH_PER_PLAYER = 400000;
+uint32 const HEALTH_PER_PLAYER = 300000;
 int32 const ROLL_MS = 12000;
-int32 const ROLL_FREE_PCT = 4;      // of his health, dealt while he holds someone
-int32 const ROLL_DROWN_PCT = 4;     // of the held player's health, every second
-int32 const ROLL_DROWNED_PCT = 80;  // of the held player's health when time runs out
-int32 const AMBUSH_PCT = 20;        // of the ambushed player's health
+int32 const ROLL_FREE_PCT = 3;      // of his health, dealt while he holds someone
+int32 const ROLL_DROWN_PCT = 3;     // of the held player's health, every second
+int32 const ROLL_DROWNED_PCT = 60;  // of the held player's health when time runs out
+int32 const AMBUSH_PCT = 15;        // of the ambushed player's health
 float const FLOOD_LEVELS[] = { 6.0f, 7.8f }; // under these heights the water is deep: the basin's floor, then the ledge
 int32 const DEEP_WATER_MS = 2500;
 } // namespace
@@ -57,8 +57,12 @@ struct go_sluice_wheel : public GameObjectAI
         _done = false;
     }
 
-    bool GossipHello(Player* player, bool /*reportUse*/) override
+    bool GossipHello(Player* player, bool reportUse) override
     {
+        if (reportUse) // the same click, reported again
+        {
+            return true;
+        }
         if (_done || !_instance || _instance->GetBossState(DATA_SLUICES) != IN_PROGRESS)
         {
             return true;

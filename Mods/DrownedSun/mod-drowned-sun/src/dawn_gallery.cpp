@@ -19,16 +19,16 @@ namespace
 uint32 const SUN_FLARE_MS = 2500;      // a rolling sun waits at the top this long, as the warning
 float const SUN_ROLL_SPEED = 16.0f;    // yards a second
 float const SUN_REACH = 3.0f;
-int32 const SUN_HIT_PCT = 10;          // of the player's health
+int32 const SUN_HIT_PCT = 8;           // of the player's health
 
-uint32 const HEALTH_PER_PLAYER = 400000;
-int32 const TRAIL_PCT = 3;             // of the player's health every second in an ember
+uint32 const HEALTH_PER_PLAYER = 300000;
+int32 const TRAIL_PCT = 2;             // of the player's health every second in an ember
 float const TRAIL_REACH = 2.5f;
-int32 const BLAZE_PCT = 60;            // of the player's health, before sharing
+int32 const BLAZE_PCT = 45;            // of the player's health, before sharing
 float const BLAZE_SHARE = 8.0f;
-int32 const SCARAB_BURST_PCT = 20;
+int32 const SCARAB_BURST_PCT = 12;
 float const SCARAB_BURST_REACH = 6.0f;
-int32 const ROLL_HIT_PCT = 15;
+int32 const ROLL_HIT_PCT = 10;
 float const ROLL_REACH = 5.0f;
 
 enum Phases

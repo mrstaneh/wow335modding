@@ -694,5 +694,14 @@ MapSpec DrownedSun() {
     for (Point island : ISLANDS) {
         printf("  island at %.1f %.1f %.2f\n", island.x, island.y, Height(island.x, island.y));
     }
+    // The Lightless Way's braziers: the torch's at the court end, then one at each bend and one at the pit, beside the
+    // way's middle (the broken brazier doodads stand 4 yards the other side).
+    const Passage& lightless = PASSAGES[5];
+    for (size_t i = 0; i < lightless.points.size(); i++) {
+        Point p = { lightless.points[i].x + (i == 0 ? 6.0f : 0.0f), lightless.points[i].y - 4 };
+        printf("  brazier at %.1f %.1f %.2f\n", p.x, p.y, Height(p.x, p.y));
+    }
+    // Where Apepheth keeps those it swallows: a corner of the plateau no way leads to.
+    printf("  belly at %.1f %.1f %.2f\n", -470.0f, -470.0f, Height(-470, -470));
     return spec;
 }
