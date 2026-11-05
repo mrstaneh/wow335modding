@@ -240,11 +240,6 @@ uint32_t AreaAt(float x, float y) {
 const char* BRAZIER = "World\\Expansion02\\Doodads\\Ulduar\\UL_Brazier01.M2";
 const char* BROKEN_BRAZIER = "World\\Expansion02\\Doodads\\ULDUAR\\UL_Brazier_Broken.M2";
 const char* SCONCE = "World\\KALIMDOR\\SILITHUS\\PASSIVEDOODADS\\AhnQirajSconces\\AhnQirajSconce01.m2";
-const char* COFFIN = "World\\KALIMDOR\\SILITHUS\\PASSIVEDOODADS\\AhnQiraCoffins\\AQ_coffinbase.m2";
-const char* COFFIN_LIDS[] = {
-    "World\\KALIMDOR\\SILITHUS\\PASSIVEDOODADS\\AhnQiraCoffins\\AQ_coffinlid01.m2",
-    "World\\KALIMDOR\\SILITHUS\\PASSIVEDOODADS\\AhnQiraCoffins\\AQ_coffinlid02.m2",
-};
 const char* PALMS[] = {
     "World\\Expansion02\\Doodads\\Scholazar\\Trees\\SholazarPalm_Tree01.M2",
     "World\\Expansion02\\Doodads\\Scholazar\\Trees\\SholazarPalm_Tree02.M2",
@@ -264,6 +259,8 @@ const char* TITAN_OBELISK = "World\\Expansion02\\Doodads\\Generic\\Titan\\TI_Obe
 const char* LOTUS_COLUMN = "World\\DrownedSun\\LotusColumn.m2"; // 9.6 tall
 const char* SUN_OBELISK = "World\\DrownedSun\\SunObelisk.m2";   // 8.1 tall
 const char* SUN_ALTAR = "World\\DrownedSun\\SunAltar.m2";       // 4.6 tall, its disc facing -y
+const char* SARCOPHAGUS = "World\\DrownedSun\\Sarcophagus.m2";  // 2.7 long, along y; its long side faces +x
+const char* JACKAL_SHRINE = "World\\DrownedSun\\JackalShrine.m2"; // 3.2 long, the jackal looking along +x
 
 template <size_t N>
 const char* Pick(const char* (&models)[N], float r) {
@@ -320,15 +317,16 @@ std::vector<Doodad> Doodads() {
     }
     ring(ROOMS[3], 6, 30, 5, [&](float x, float y) { add(SUN_OBELISK, x, y, 0.1f, Facing(x, y, ROOMS[3].at), 1.5f); });
 
-    // The Hall of Weighing: coffins along the hall's walls inside a ring of lotus columns (clear of the way in, at
-    // 270 degrees), braziers around the Scales.
+    // The Hall of Weighing: braziers around the Scales and two jackal shrines watching the way in from the court (at
+    // 270 degrees); sarcophagi along the hall's walls inside a ring of lotus columns, clear of its way in.
     ring(ROOMS[4], 6, 30, 4, [&](float x, float y) { add(BRAZIER, x, y, 0.1f, Facing(x, y, ROOMS[4].at), 1.0f); });
+    for (float a : { 240.0f, 300.0f }) {
+        float r = EdgeRadius(ROOMS[4], a * PI / 180) - 7;
+        float x = ROOMS[4].at.x + r * std::cos(a * PI / 180), y = ROOMS[4].at.y + r * std::sin(a * PI / 180);
+        add(JACKAL_SHRINE, x, y, 0.05f, Facing(x, y, ROOMS[4].at), 1.4f);
+    }
     ring(ROOMS[5], 8, 22.5f, 12, [&](float x, float y) { add(LOTUS_COLUMN, x, y, 0.05f, Facing(x, y, ROOMS[5].at), 1.3f); });
-    ring(ROOMS[5], 10, 18, 5, [&](float x, float y) {
-        float yaw = Facing(x, y, ROOMS[5].at);
-        add(COFFIN, x, y, 0.1f, yaw, 1.0f);
-        add(Pick(COFFIN_LIDS, Random(int(x), int(y), 21)), x, y, 0.1f, yaw, 1.0f);
-    });
+    ring(ROOMS[5], 10, 18, 5, [&](float x, float y) { add(SARCOPHAGUS, x, y, 0.05f, Facing(x, y, ROOMS[5].at), 1.2f); });
 
     // The Eclipse Pit: dead braziers along the Lightless Way and around the pit.
     const Passage& way = PASSAGES[5];

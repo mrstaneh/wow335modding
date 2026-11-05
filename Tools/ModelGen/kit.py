@@ -225,5 +225,33 @@ def prism(name, rings, mat, sides=4, u=(0.0, 1.0), cap_top=False, cap_bottom=Fal
     return _object(name, bm, mat, False)
 
 
+def box(name, lo, hi, mat, side, end, top, bottom=None):
+    """An axis-aligned box from lo to hi (x, y, z); each kind of face shows its own UV rectangle (u0, v0, u1, v1):
+    side for the faces along x (front -y and back +y), end for the faces at -x and +x, top and bottom."""
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new()
+    (x0, y0, z0), (x1, y1, z1) = lo, hi
+    faces = [  # corners counter-clockwise seen from outside, starting bottom-left; the rectangle to show
+        ([(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)], side),
+        ([(x1, y1, z0), (x0, y1, z0), (x0, y1, z1), (x1, y1, z1)], side),
+        ([(x0, y1, z0), (x0, y0, z0), (x0, y0, z1), (x0, y1, z1)], end),
+        ([(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)], end),
+        ([(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)], top),
+        ([(x0, y1, z0), (x1, y1, z0), (x1, y0, z0), (x0, y0, z0)], bottom or end),
+    ]
+    verts = {}  # shared corners, so the box is closed and its normals can be made to point out
+
+    def vert(c):
+        if c not in verts:
+            verts[c] = bm.verts.new(c)
+        return verts[c]
+
+    for corners, (u0, v0, u1, v1) in faces:
+        f = bm.faces.new([vert(c) for c in corners])
+        for loop, uv in zip(f.loops, ((u0, v0), (u1, v0), (u1, v1), (u0, v1))):
+            loop[uvl].uv = uv
+    return _object(name, bm, mat, False)
+
+
 def save(path):
     bpy.ops.wm.save_as_mainfile(filepath=path, compress=True)
