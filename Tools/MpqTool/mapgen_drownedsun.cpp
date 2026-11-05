@@ -239,8 +239,6 @@ uint32_t AreaAt(float x, float y) {
 
 const char* BRAZIER = "World\\Expansion02\\Doodads\\Ulduar\\UL_Brazier01.M2";
 const char* BROKEN_BRAZIER = "World\\Expansion02\\Doodads\\ULDUAR\\UL_Brazier_Broken.M2";
-const char* OBELISK = "World\\KALIMDOR\\SILITHUS\\PASSIVEDOODADS\\AhnQirajStones\\Ahn_Qirajobelisk.m2";
-const char* ALTAR = "World\\KALIMDOR\\SILITHUS\\PASSIVEDOODADS\\AhnQirajAltar\\AhnQirajAlter.m2";
 const char* SCONCE = "World\\KALIMDOR\\SILITHUS\\PASSIVEDOODADS\\AhnQirajSconces\\AhnQirajSconce01.m2";
 const char* COFFIN = "World\\KALIMDOR\\SILITHUS\\PASSIVEDOODADS\\AhnQiraCoffins\\AQ_coffinbase.m2";
 const char* COFFIN_LIDS[] = {
@@ -262,6 +260,10 @@ const char* BONES[] = {
 const char* CONDUIT = "World\\Expansion02\\Doodads\\Azjol-Nerub\\Columns\\Azjol_ObeliskGold01.M2";
 const char* SUN_DISC = "World\\KALIMDOR\\SILITHUS\\ACTIVEDOODADS\\Ahn_Quiraj_OssirianCrystal\\Ahn_quiraj_ossirianCrystal.m2";
 const char* TITAN_OBELISK = "World\\Expansion02\\Doodads\\Generic\\Titan\\TI_Obelisk01.M2";
+// Our own (Mods/DrownedSun/models, Tools/ModelGen)
+const char* LOTUS_COLUMN = "World\\DrownedSun\\LotusColumn.m2"; // 9.6 tall
+const char* SUN_OBELISK = "World\\DrownedSun\\SunObelisk.m2";   // 8.1 tall
+const char* SUN_ALTAR = "World\\DrownedSun\\SunAltar.m2";       // 4.6 tall, its disc facing -y
 
 template <size_t N>
 const char* Pick(const char* (&models)[N], float r) {
@@ -290,9 +292,14 @@ std::vector<Doodad> Doodads() {
     const Room& court = ROOMS[0];
 
     // The Sun Court: braziers between the five ways out (north, west, south, east and the stair at 45 degrees) and the
-    // altar in the middle; the steles between the ways are buildings.
+    // sun altar in the middle, its disc facing the way in from the south, four lotus columns around it; the steles between
+    // the ways are buildings.
     ring(court, 8, 22.5f, 6, [&](float x, float y) { add(BRAZIER, x, y, 0.1f, Facing(x, y, court.at), 1.0f); });
-    add(ALTAR, 0, 0, 0.2f, 180, 1.2f);
+    add(SUN_ALTAR, 0, 0, 0.05f, 0, 1.0f);
+    for (int i = 0; i < 4; i++) {
+        float a = (45 + 90 * i) * PI / 180;
+        add(LOTUS_COLUMN, 10 * std::cos(a), 10 * std::sin(a), 0.05f, 0, 1.0f);
+    }
 
     // The Flooded Nave: palms on the banks and the basin's islands, drowned logs, bones in the shallows.
     for (const Room& room : { ROOMS[1], ROOMS[2] }) {
@@ -311,10 +318,12 @@ std::vector<Doodad> Doodads() {
         add(SCONCE, x, 8, 0.0f, -90, 1.0f);
         add(SCONCE, x, -8, 0.0f, 90, 1.0f);
     }
-    ring(ROOMS[3], 6, 30, 5, [&](float x, float y) { add(OBELISK, x, y, 0.3f, Facing(x, y, ROOMS[3].at), 0.45f); });
+    ring(ROOMS[3], 6, 30, 5, [&](float x, float y) { add(SUN_OBELISK, x, y, 0.1f, Facing(x, y, ROOMS[3].at), 1.5f); });
 
-    // The Hall of Weighing: coffins along the hall's walls, braziers around the Scales.
+    // The Hall of Weighing: coffins along the hall's walls inside a ring of lotus columns (clear of the way in, at
+    // 270 degrees), braziers around the Scales.
     ring(ROOMS[4], 6, 30, 4, [&](float x, float y) { add(BRAZIER, x, y, 0.1f, Facing(x, y, ROOMS[4].at), 1.0f); });
+    ring(ROOMS[5], 8, 22.5f, 12, [&](float x, float y) { add(LOTUS_COLUMN, x, y, 0.05f, Facing(x, y, ROOMS[5].at), 1.3f); });
     ring(ROOMS[5], 10, 18, 5, [&](float x, float y) {
         float yaw = Facing(x, y, ROOMS[5].at);
         add(COFFIN, x, y, 0.1f, yaw, 1.0f);

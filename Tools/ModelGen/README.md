@@ -16,6 +16,15 @@ the model's name: it becomes `World\<Mod>\<Name>.m2` in the patch.
 - Faces are one-sided unless the material's Backface Culling is off.
 - Keep it low-poly: under 65 536 vertices; a few hundred to a few thousand triangles is right for 3.3.5.
 - Static only for now: one bone, a Stand animation, no particles. The render mesh is also its collision.
+- `kit.py` builds props from code: painted stone, bands, glyph panels (numpy), lathed and prism meshes with their UVs.
+  Load it with `runpy.run_path` in the Blender MCP. Give a texture the aspect of the surface it covers (a tall
+  shaft gets a tall texture), or its glyphs and grain stretch.
+
+## Placing doodads
+
+Props that decorate the map are doodads: add them in `Doodads()` in `Tools/MpqTool/mapgen_drownedsun.cpp` with the
+`World\DrownedSun\<Name>.m2` path. They need no DBC row. The server takes their collision for line of sight from
+`mods.sh server`.
 
 ## 2. Give it a display
 
