@@ -46,6 +46,13 @@ void CWorldParam::SetDefaultParticleDensity() {
 // VERIFY: 253389de auto
 // OFFSET: 0x0078DDF0
 void CWorldParam::SetDefaultProjectedTextures() {
+#if defined(WOWDECOMP_PLATFORM_WEB)
+    // wow335modding: off for the same reason as particle density above, though the projected effects (Model2.wfx)
+    // have fixed-function passes, which CGxDeviceWebGl draws.
+    CWorldParam::cvar_projectedTextures->Set("1", true, false, false, true);
+    return;
+#endif
+
     switch (g_theGxDevicePtr->Caps().m_shaderTargets[GxSh_Pixel]) {
         case 0:
         case 1:

@@ -1,3 +1,29 @@
+diff -ruN orig/Interface/FrameXML/ChatFrame.lua work/Interface/FrameXML/ChatFrame.lua
+--- orig/Interface/FrameXML/ChatFrame.lua
++++ work/Interface/FrameXML/ChatFrame.lua
+@@ -2780,6 +2780,10 @@
+ 			if ( not globalstring ) then
+ 				globalstring = _G["CHAT_"..arg1.."_NOTICE"];
+ 			end
++			-- wow335modding: a notice with no string has nothing to show; formatting nil raised a Lua error.
++			if ( not globalstring ) then
++				return true;
++			end
+ 			if(strlen(arg5) > 0) then
+ 				-- TWO users in this notice (E.G. x kicked y)
+ 				self:AddMessage(format(globalstring, arg8, arg4, arg2, arg5), info.r, info.g, info.b, info.id);
+@@ -2793,6 +2797,11 @@
+ 			if ( not globalstring ) then
+ 				globalstring = _G["CHAT_"..arg1.."_NOTICE"];
+ 			end
++			-- wow335modding: likewise; AzerothCore answers the LookingForGroup channel the client joins in every city with
++			-- NOT_IN_LFG, which has no string in 3.3.5.
++			if ( not globalstring ) then
++				return true;
++			end
+ 			if ( arg10 > 0 ) then
+ 				arg4 = arg4.." "..arg10;
+ 			end
 diff -ruN orig/Interface/FrameXML/VideoOptionsPanels.lua work/Interface/FrameXML/VideoOptionsPanels.lua
 --- orig/Interface/FrameXML/VideoOptionsPanels.lua
 +++ work/Interface/FrameXML/VideoOptionsPanels.lua

@@ -670,13 +670,18 @@ void CWorldParam::Initialize() {
     }
 
 #if defined(WOWDECOMP_PLATFORM_WEB)
-    // wow335modding: configs saved before the web default in SetDefaultParticleDensity hold its old 0.1. Reset it
-    // once (webParticleDensity marks that), so a density chosen afterwards in the video options is kept.
-    CVar* webParticleDensity = CVar::Register("webParticleDensity", "Particle density was reset for the web client", 1, "0", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
+    // wow335modding: configs saved before the web defaults in SetDefaultParticleDensity and
+    // SetDefaultProjectedTextures hold the old ones (0.1, 0). Each is reset once, webVideoDefaults counting how many
+    // have been, so what is chosen afterwards in the video options is kept.
+    CVar* webVideoDefaults = CVar::Register("webVideoDefaults", "Web client video defaults applied", 1, "0", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
 
-    if (!webParticleDensity->m_intValue) {
+    if (webVideoDefaults->m_intValue < 1) {
         CWorldParam::SetDefaultParticleDensity();
-        webParticleDensity->Set("1", true, false, false, true);
+    }
+
+    if (webVideoDefaults->m_intValue < 2) {
+        CWorldParam::SetDefaultProjectedTextures();
+        webVideoDefaults->Set("2", true, false, false, true);
     }
 #endif
 }
