@@ -26,9 +26,6 @@ uint32_t CM2Cache::s_processorFeatures;
 // STATIC: 0x00D3FCF0
 static CM2Cache s_cache;
 
-// STATIC: 0x00DCE690
-static float s_randomTable[128];
-
 // VERIFY: d79458b6 auto
 // OFFSET: 0x0081BF50
 void CM2Cache::ClearSharedHash() {
@@ -158,9 +155,11 @@ int32_t CM2Cache::Initialize(uint32_t flags) {
     uint32_t high = rand() << 16;
     CRndSeed seed(high | static_cast<uint16_t>(rand()));
 
-    for (uint32_t i = 0; i < sizeof(s_randomTable) / sizeof(s_randomTable[0]); i++) {
+    // 0x00DCE690 is CParticleEmitter2::s_rndTable. A copy of it here once took these values, leaving the particles'
+    // table zero: every emitter with a twinkle scale range starting at 0 drew its particles at size 0.
+    for (uint32_t i = 0; i < sizeof(CParticleEmitter2::s_rndTable) / sizeof(CParticleEmitter2::s_rndTable[0]); i++) {
         uint32_t bits = (CRandom::uint32_(seed) & 0x7FFFFF) | 0x3F800000;
-        s_randomTable[i] = *reinterpret_cast<float*>(&bits) - 1.0f;
+        CParticleEmitter2::s_rndTable[i] = *reinterpret_cast<float*>(&bits) - 1.0f;
     }
 
     CParticleEmitter2::Init();

@@ -7,6 +7,14 @@
 // VERIFY: ee297f04 auto
 // OFFSET: 0x0078DD40
 void CWorldParam::SetDefaultParticleDensity() {
+#if defined(WOWDECOMP_PLATFORM_WEB)
+    // wow335modding: CGxDeviceWebGl reports no pixel shader target (it emulates the fixed-function path), which the
+    // switch below reads as a pre-shader card and answers with 0.1: every emitter then spawned a tenth of its particles
+    // (UL_Brazier01's fire one at a time), so particle fire looked absent. A WebGL2 GPU is no such card.
+    CWorldParam::cvar_particleDensity->Set("1.0", true, false, false, true);
+    return;
+#endif
+
     switch (g_theGxDevicePtr->Caps().m_shaderTargets[GxSh_Pixel]) {
         case 0:
         case 1:
