@@ -181,6 +181,10 @@ public:
             {
                 return true;
             }
+            if (type == DATA_APEPHETH) // the sun is back: torches go out
+            {
+                instance->DoForAllPlayers([&](Player* player) { DropTorch(player); });
+            }
             uint32 boss = 0;
             if (type == DATA_SLUICES)
             {
