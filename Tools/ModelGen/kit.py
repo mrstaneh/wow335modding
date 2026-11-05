@@ -253,5 +253,49 @@ def box(name, lo, hi, mat, side, end, top, bottom=None):
     return _object(name, bm, mat, False)
 
 
+def flame_texture(seed, size=(256, 128)):
+    """A tongue of fire on black, for an additive material (black adds nothing): white-hot at the root, orange, then
+    red at the tips, with ragged edges."""
+    h, w = size
+    v, u = np.mgrid[0:h, 0:w] / np.array([h, w])[:, None, None]
+    wobble = (noise(size, 6, seed, 2) - 0.5) * 0.35 * v
+    x = np.abs(u - 0.5 + wobble) * 2
+    width = 0.85 * np.clip(v * 5, 0, 1) ** 0.5 * (1 - v) ** 0.7
+    body = np.clip((width - x) / 0.25, 0, 1) * np.clip((1 - v) * 1.5, 0, 1)
+    body *= 0.75 + 0.5 * noise(size, 10, seed + 1, 2)
+    heat = np.clip(1 - v * 1.4 - x * 0.6, 0, 1)
+    rgb = np.stack([np.ones_like(heat), 0.25 + 0.7 * heat, 0.05 + 0.6 * heat ** 2], axis=-1)
+    return np.clip(rgb * body[..., None], 0, 1)
+
+
+def glow_material(name, im):
+    """Additive, unlit, unfogged, two-sided and without depth writes: fire, light, magic (Tools/ModelGen/export_m2.py)."""
+    mat = material(name, im, two_sided=True)
+    mat['wow_blend'] = 4
+    mat['wow_flags'] = 0x1 | 0x2 | 0x10
+    return mat
+
+
+def flame(name, at, width, height, mat, cards=3):
+    """Crossed upright cards around a vertical line from at, each showing the whole texture."""
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new()
+    x, y, z = at
+    for k in range(cards):
+        a = math.pi * k / cards
+        dx, dy = math.cos(a) * width / 2, math.sin(a) * width / 2
+        vs = [bm.verts.new(c) for c in ((x - dx, y - dy, z), (x + dx, y + dy, z), (x + dx, y + dy, z + height), (x - dx, y - dy, z + height))]
+        f = bm.faces.new(vs)
+        for loop, uv in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
+            loop[uvl].uv = uv
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    me.materials.append(mat)
+    return ob
+
+
 def save(path):
     bpy.ops.wm.save_as_mainfile(filepath=path, compress=True)

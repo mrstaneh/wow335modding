@@ -237,9 +237,7 @@ uint32_t AreaAt(float x, float y) {
     return Nearest(x, y).area;
 }
 
-const char* BRAZIER = "World\\Expansion02\\Doodads\\Ulduar\\UL_Brazier01.M2";
 const char* BROKEN_BRAZIER = "World\\Expansion02\\Doodads\\ULDUAR\\UL_Brazier_Broken.M2";
-const char* SCONCE = "World\\KALIMDOR\\SILITHUS\\PASSIVEDOODADS\\AhnQirajSconces\\AhnQirajSconce01.m2";
 const char* PALMS[] = {
     "World\\Expansion02\\Doodads\\Scholazar\\Trees\\SholazarPalm_Tree01.M2",
     "World\\Expansion02\\Doodads\\Scholazar\\Trees\\SholazarPalm_Tree02.M2",
@@ -261,6 +259,10 @@ const char* SUN_OBELISK = "World\\DrownedSun\\SunObelisk.m2";   // 8.1 tall
 const char* SUN_ALTAR = "World\\DrownedSun\\SunAltar.m2";       // 4.6 tall, its disc facing -y
 const char* SARCOPHAGUS = "World\\DrownedSun\\Sarcophagus.m2";  // 2.7 long, along y; its long side faces +x
 const char* JACKAL_SHRINE = "World\\DrownedSun\\JackalShrine.m2"; // 3.2 long, the jackal looking along +x
+const char* FALCON = "World\\DrownedSun\\FalconStatue.m2";       // 3.4 tall, looking along +x
+// Their fire is in the models: the web client draws no particles.
+const char* BRAZIER = "World\\DrownedSun\\BronzeBrazier.m2"; // 2.8 tall with its fire
+const char* TORCH = "World\\DrownedSun\\BronzeTorch.m2";     // 3.35 tall with its fire
 
 template <size_t N>
 const char* Pick(const char* (&models)[N], float r) {
@@ -291,7 +293,7 @@ std::vector<Doodad> Doodads() {
     // The Sun Court: braziers between the five ways out (north, west, south, east and the stair at 45 degrees) and the
     // sun altar in the middle, its disc facing the way in from the south, four lotus columns around it; the steles between
     // the ways are buildings.
-    ring(court, 8, 22.5f, 6, [&](float x, float y) { add(BRAZIER, x, y, 0.1f, Facing(x, y, court.at), 1.0f); });
+    ring(court, 8, 22.5f, 6, [&](float x, float y) { add(BRAZIER, x, y, 0.05f, Facing(x, y, court.at), 2.0f); });
     add(SUN_ALTAR, 0, 0, 0.05f, 0, 1.0f);
     for (int i = 0; i < 4; i++) {
         float a = (45 + 90 * i) * PI / 180;
@@ -310,16 +312,21 @@ std::vector<Doodad> Doodads() {
     add(PALM_LOG, -8, -120, 0.6f, 40, 1.0f);
     add(PALM_LOG, 12, -212, 0.6f, 160, 1.0f);
 
-    // The Dawn Gallery: sconces up both sides of the Long Ramp, obelisks around Khepret's arena.
+    // The Dawn Gallery: torches up both sides of the Long Ramp, obelisks around Khepret's arena and two falcons
+    // either side of the way in from the ramp (at 0 degrees), looking down it.
     for (float x = -60; x > -170; x -= 18) {
-        add(SCONCE, x, 8, 0.0f, -90, 1.0f);
-        add(SCONCE, x, -8, 0.0f, 90, 1.0f);
+        add(TORCH, x, 8, 0.0f, -90, 1.6f);
+        add(TORCH, x, -8, 0.0f, 90, 1.6f);
     }
     ring(ROOMS[3], 6, 30, 5, [&](float x, float y) { add(SUN_OBELISK, x, y, 0.1f, Facing(x, y, ROOMS[3].at), 1.5f); });
+    for (float a : { -18.0f, 18.0f }) {
+        float r = EdgeRadius(ROOMS[3], a * PI / 180) - 5;
+        add(FALCON, ROOMS[3].at.x + r * std::cos(a * PI / 180), ROOMS[3].at.y + r * std::sin(a * PI / 180), 0.05f, 0, 1.5f);
+    }
 
     // The Hall of Weighing: braziers around the Scales and two jackal shrines watching the way in from the court (at
     // 270 degrees); sarcophagi along the hall's walls inside a ring of lotus columns, clear of its way in.
-    ring(ROOMS[4], 6, 30, 4, [&](float x, float y) { add(BRAZIER, x, y, 0.1f, Facing(x, y, ROOMS[4].at), 1.0f); });
+    ring(ROOMS[4], 6, 30, 4, [&](float x, float y) { add(BRAZIER, x, y, 0.05f, Facing(x, y, ROOMS[4].at), 2.0f); });
     for (float a : { 240.0f, 300.0f }) {
         float r = EdgeRadius(ROOMS[4], a * PI / 180) - 7;
         float x = ROOMS[4].at.x + r * std::cos(a * PI / 180), y = ROOMS[4].at.y + r * std::sin(a * PI / 180);

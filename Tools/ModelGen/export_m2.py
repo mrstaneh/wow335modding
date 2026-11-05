@@ -143,8 +143,11 @@ def export(pack_dir, mpq_dir):
         write_blp(image, os.path.join(out, tex_name + '.blp'))
         path = f'{mpq_dir}\\{tex_name}.blp'.encode() + b'\0'
         textures.append((0, 3, blob.add(path, len(path))))  # flags 3: wrap in u and v
-        two_sided = not material.use_backface_culling
-        materials.append((4 if two_sided else 0, 0))  # flags 4: no backface culling; blend 0: opaque
+        # Render flags (1 unlit, 2 unfogged, 4 two-sided, 0x10 no depth write) and blend mode (0 opaque, 1 alpha
+        # key, 2 alpha, 4 additive) from the material's custom properties wow_flags and wow_blend; two-sided also
+        # when its backface culling is off.
+        flags = int(material.get('wow_flags', 0)) | (0 if material.use_backface_culling else 4)
+        materials.append((flags, int(material.get('wow_blend', 0))))
     raw = b''.join(struct.pack('<IIII', t, f, *arr) for t, f, arr in textures)
     a['textures'] = blob.add(raw, len(textures))
     # One texture weight, keyed at full: without a key the client leaves it at 0 and the model is invisible
@@ -160,9 +163,11 @@ def export(pack_dir, mpq_dir):
     a['textureCoordCombos'] = blob.add(struct.pack('<H', 0), 1)
     a['textureWeightCombos'] = blob.add(struct.pack('<H', 0), 1)
     a['textureTransformCombos'] = blob.add(struct.pack('<H', 0xFFFF), 1)  # none: identity
-    # Collision: the render mesh itself
-    tris = [indices[i:i + 3] for i in range(0, len(indices), 3)]
-    a['collisionIndices'] = blob.add(pack('<H', indices), len(indices))
+    # Collision: the render mesh itself, its opaque parts (flames and glows are not solid)
+    solid = [i for (_, _, istart, icount), (_, blend) in zip(sections, materials) if blend == 0
+             for i in indices[istart:istart + icount]]
+    tris = [solid[i:i + 3] for i in range(0, len(solid), 3)]
+    a['collisionIndices'] = blob.add(pack('<H', solid), len(solid))
     a['collisionPositions'] = blob.add(pack('<3f', [tuple(p) for p in positions]), len(positions))
     normals = []
     for t in tris:

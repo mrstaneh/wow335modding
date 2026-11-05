@@ -14,6 +14,9 @@ the model's name: it becomes `World\<Mod>\<Name>.m2` in the patch.
 - Each material needs an Image Texture node with a power-of-two image (256, 512...). Pack the image into the .blend
   (Image > Pack) so the file is self-contained. Each material becomes its own texture and draw batch.
 - Faces are one-sided unless the material's Backface Culling is off.
+- Fire, light and magic: give the material the custom properties `wow_blend` (4 = additive, 2 = alpha) and
+  `wow_flags` (1 unlit, 2 unfogged, 0x10 no depth write); `kit.glow_material` and `kit.flame` do this. Such parts
+  are left out of the collision. Particle emitters don't draw in the web client, so fire has to be geometry.
 - Keep it low-poly: under 65 536 vertices; a few hundred to a few thousand triangles is right for 3.3.5.
 - Static only for now: one bone, a Stand animation, no particles. The render mesh is also its collision.
 - `kit.py` builds props from code: painted stone, bands, glyph panels (numpy), lathed and prism meshes with their UVs.
