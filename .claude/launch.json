@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "webclient-dev",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["Tools/WebClient/serve.py", "--port", "8003"],
+      "port": 8003
+    }
+  ]
+}
